@@ -359,7 +359,7 @@ class TunerViewModel(
         /** ~0,35 s à 23 analyses/s. */
         const val STREAK_FRAMES = 8
         const val TONE_ECHO_MS = 400L
-        const val LEVEL_FLOOR_DB = -90.0
-        const val LEVEL_RANGE_DB = 60.0
+        const val LEVEL_FLOOR_DB = -100.0
+        const val LEVEL_RANGE_DB = 70.0
     }
 }

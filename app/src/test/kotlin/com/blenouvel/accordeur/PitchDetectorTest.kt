@@ -99,6 +99,60 @@ class PitchDetectorTest {
         }
     }
 
+    /**
+     * Cas signalé sur S25 : la grosse corde n'était jamais détectée. Cordes filées (B = 1,5e-4…8e-4)
+     * captées par le chemin « voix » d'un téléphone (passe-haut 150 Hz d'ordre 4 : fondamentale
+     * quasi absente), guitare acoustique ou électrique non branchée (aigus dominants). Le MPM seul
+     * lit 20 à 50 cents trop haut avec une clarté de 0,5–0,85 : la série de partiels doit prendre
+     * le relais, à la bonne octave et à moins d'un cent.
+     */
+    @Test
+    fun stiffLowStringsThroughPhoneVoicePath() {
+        val cases = listOf(
+            Triple(Presets.DROP_G_SHARP_7, 0, 8e-4),
+            Triple(Presets.DROP_A_7, 0, 6e-4),
+            Triple(Presets.STANDARD_7, 0, 4e-4),
+            Triple(Presets.DROP_D_6, 0, 2.5e-4),
+            Triple(Presets.STANDARD_6, 0, 1.5e-4),
+        )
+        for ((tuning, index, b) in cases) for (radiation in listOf(1.0, 2.0)) {
+            val targets = tuning.frequencies()
+            val f = targets[index]
+            val tone = TestSignals.highPass(TestSignals.stiffPluck(f, b, 1.6, radiation = radiation, amplitude = 0.01), 150.0)
+            val signal = TestSignals.addNoise(TestSignals.concat(TestSignals.silence(0.6), tone), rms = 3e-5, seed = 23)
+            val readings = runPipeline(signal, TunerTargets(targets))
+            val hop = PitchDetector.HOP.toDouble() / SAMPLE_RATE
+            val during = readings.filterIndexed { i, _ -> (i + 1) * hop in 0.9..2.1 }
+            val found = during.filter { !it.isNaN() }
+            val label = "${tuning.name} ${tuning.strings[index].note} B=$b α=$radiation"
+            assertTrue("$label : ${found.size}/${during.size} lectures", found.size >= during.size * 0.9)
+            for (r in found) assertEquals("$label : $r Hz", tuning.strings[index].note, NoteMapper.nearest(r).note)
+            val settled = readings.filterIndexed { i, r -> (i + 1) * hop in 1.3..2.1 && !r.isNaN() }
+            assertTrue("$label : écart ${settled.maxOf { abs(cents(it, f)) }} cents", settled.all { abs(cents(it, f)) < 1.0 })
+        }
+    }
+
+    @Test
+    fun quietNoteAboveRoomNoiseIsDetected() {
+        // Sans traitement (UNPROCESSED) : note douce vers −90 dBFS, bruit de la pièce vers −105 dBFS.
+        val f = 110.0
+        val tone = TestSignals.stiffPluck(f, 1e-4, 1.5, amplitude = 1e-4)
+        val signal = TestSignals.addNoise(TestSignals.concat(TestSignals.silence(0.6), tone), rms = 1e-5, seed = 29)
+        val readings = runPipeline(signal, TunerTargets(Presets.STANDARD_6.frequencies()))
+        val found = readings.drop(readings.size / 2).filter { !it.isNaN() }
+        assertTrue("note douce non détectée", found.size >= 8)
+        for (r in found) assertTrue("$r Hz", abs(cents(r, f)) < 2.0)
+    }
+
+    @Test
+    fun coloredNoiseGivesNoPitch() {
+        for (brown in listOf(false, true)) for (rms in listOf(1e-4, 3e-3, 3e-2)) {
+            val noise = TestSignals.coloredNoise(SAMPLE_RATE * 4, rms, brown)
+            val readings = runPipeline(noise, TunerTargets(Presets.STANDARD_6.frequencies()))
+            assertTrue("bruit ${if (brown) "brun" else "rose"} $rms : ${readings.count { !it.isNaN() }} lectures", readings.all { it.isNaN() })
+        }
+    }
+
     @Test
     fun noiseAloneGivesNoPitch() {
         val noise = TestSignals.addNoise(TestSignals.silence(2.0), rms = 0.05, seed = 99)

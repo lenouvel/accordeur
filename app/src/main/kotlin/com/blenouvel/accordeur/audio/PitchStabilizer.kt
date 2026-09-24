@@ -10,7 +10,9 @@ import kotlin.math.pow
  *
  * - **Gate** adaptatif avec hystérésis : niveau > max(plancher absolu, bruit ambiant + marge).
  *   Le bruit de fond est suivi en continu (descente rapide, remontée lente).
- * - **Clarté** : une mesure n'est retenue que si la clarté MPM ≥ [minClarity].
+ * - **Fiabilité** : décidée par [PitchDetector] (série de partiels confirmée ou MPM très net).
+ * - **Confirmation** : au début d'une note, deux mesures successives doivent concorder (les
+ *   trames d'attaque, où la fenêtre mêle silence, transitoire et note, sont peu sûres).
  * - **Garde d'octave** : repli vers la corde verrouillée ou vers une corde de l'accordage, puis
  *   continuité à l'intérieur d'une attaque (une fois la note établie, un saut d'exactement une
  *   octave est une erreur de détection — typique des cordes graves en fin de note).
@@ -21,7 +23,6 @@ import kotlin.math.pow
  * Hauteurs manipulées en cents absolus : 1200·log2(f / 440).
  */
 class PitchStabilizer(
-    private val minClarity: Double = 0.9,
     private val holdSeconds: Double = 1.2,
     smoothingBeta: Double = SMOOTHING_BETA,
 ) {
@@ -66,6 +67,7 @@ class PitchStabilizer(
 
     private var reference = Double.NaN
     private var acceptedInSegment = 0
+    private var firstReading = Double.NaN
     private var pendingValue = Double.NaN
     private var pendingCount = 0
     private var warmupHops = 0
@@ -82,7 +84,12 @@ class PitchStabilizer(
     fun updateLevel(levelDb: Double, hopLevelDb: Double, timeSeconds: Double) {
         val dt = if (previousTime.isNaN()) 0.0 else (timeSeconds - previousTime).coerceAtLeast(0.0)
         previousTime = timeSeconds
-        if (startTime.isNaN()) startTime = timeSeconds
+        if (startTime.isNaN()) {
+            // Premier niveau mesuré : point de départ du bruit de fond (affiné pendant 0,5 s).
+            // Un bruit continu déjà présent (ventilation, ronflement) est ainsi ignoré d'emblée.
+            startTime = timeSeconds
+            noiseFloorDb = levelDb.coerceIn(ABSOLUTE_GATE_DB - 20.0, MAX_NOISE_FLOOR_DB)
+        }
 
         // Suivi du bruit de fond : descente rapide, remontée lente (une note tenue ne devient pas
         // « bruit »), sauf juste après le démarrage où l'on apprend vite l'ambiance de la pièce.
@@ -118,7 +125,7 @@ class PitchStabilizer(
         lockedTargetHz: Double,
         stringTargetsHz: DoubleArray,
     ) {
-        val valid = gateOpen && estimate != null && estimate.isValid && estimate.clarity >= minClarity
+        val valid = gateOpen && estimate != null && estimate.isValid
         if (warmupHops > 0) {
             warmupHops--
         } else if (valid) {
@@ -149,15 +156,24 @@ class PitchStabilizer(
     private fun accept(rawCents: Double, time: Double, lockedTargetHz: Double, strings: DoubleArray) {
         var cents = foldToTargets(rawCents, lockedTargetHz, strings)
 
-        // Continuité d'octave dans l'attaque en cours.
-        if (acceptedInSegment >= REFERENCE_READINGS && !reference.isNaN()) {
-            if (abs(cents - (reference + 1200.0)) < OCTAVE_TOLERANCE_CENTS) {
-                cents -= 1200.0
-            } else if (abs(cents - (reference - 1200.0)) < OCTAVE_TOLERANCE_CENTS) {
-                cents += 1200.0
+        // Début de note : on attend une deuxième mesure concordante.
+        if (acceptedInSegment == 0) {
+            val agrees = !firstReading.isNaN() && abs(cents - firstReading) < START_AGREEMENT_CENTS
+            firstReading = cents
+            if (!agrees) return
+        }
+
+        if (acceptedInSegment > 0 && !reference.isNaN()) {
+            // Continuité d'octave une fois la note établie.
+            if (acceptedInSegment >= OCTAVE_GUARD_READINGS) {
+                if (abs(cents - (reference + 1200.0)) < OCTAVE_TOLERANCE_CENTS) {
+                    cents -= 1200.0
+                } else if (abs(cents - (reference - 1200.0)) < OCTAVE_TOLERANCE_CENTS) {
+                    cents += 1200.0
+                }
             }
             // Saut franc vers une autre note sans nouvelle attaque : on n'y croit qu'après
-            // plusieurs mesures concordantes.
+            // plusieurs mesures concordantes (une mesure isolée aberrante est ignorée).
             if (abs(cents - reference) > NOTE_CHANGE_CENTS) {
                 if (pendingCount > 0 && abs(cents - pendingValue) < NOTE_AGREEMENT_CENTS) {
                     pendingCount++
@@ -168,6 +184,7 @@ class PitchStabilizer(
                 if (pendingCount < NOTE_CHANGE_READINGS) return
                 resetFilters()
                 acceptedInSegment = 0
+                firstReading = cents
             }
         }
         pendingCount = 0
@@ -215,6 +232,7 @@ class PitchStabilizer(
         resetFilters()
         reference = Double.NaN
         acceptedInSegment = 0
+        firstReading = Double.NaN
         pendingCount = 0
         // Après une nouvelle attaque sur une note qui sonne encore, la fenêtre mélange les deux
         // notes : on ignore la première analyse.
@@ -256,13 +274,18 @@ class PitchStabilizer(
 
     companion object {
         const val SILENCE_DB = -120.0
-        const val ABSOLUTE_GATE_DB = -85.0
-        const val GATE_MARGIN_DB = 10.0
-        const val GATE_HYSTERESIS_DB = 4.0
+        /**
+         * Plancher absolu très bas : sans traitement (UNPROCESSED), 94 dB SPL ≈ −36 dBFS, une guitare
+         * jouée doucement arrive vers −90 dBFS. C'est le bruit ambiant mesuré qui fixe le seuil ;
+         * le bruit, lui, est rejeté par le détecteur (pas de série de partiels).
+         */
+        const val ABSOLUTE_GATE_DB = -100.0
+        const val GATE_MARGIN_DB = 6.0
+        const val GATE_HYSTERESIS_DB = 3.0
         const val INITIAL_NOISE_FLOOR_DB = -95.0
         const val MAX_NOISE_FLOOR_DB = -45.0
         const val NOISE_RISE_DB_PER_S = 1.5
-        const val LEARNING_S = 1.5
+        const val LEARNING_S = 0.5
         const val LEARNING_RISE_DB_PER_S = 15.0
 
         /**
@@ -274,12 +297,13 @@ class PitchStabilizer(
         const val ONSET_REFRACTORY_S = 0.15
 
         private const val MEDIAN_SIZE = 5
-        private const val REFERENCE_READINGS = 3
+        private const val OCTAVE_GUARD_READINGS = 3
         private const val OCTAVE_TOLERANCE_CENTS = 70.0
         private const val TARGET_OCTAVE_WINDOW_CENTS = 100.0
         private const val NOTE_CHANGE_CENTS = 60.0
         private const val NOTE_AGREEMENT_CENTS = 30.0
         private const val NOTE_CHANGE_READINGS = 3
+        private const val START_AGREEMENT_CENTS = 40.0
 
         fun toCents(frequency: Double): Double = 1200.0 * log2(frequency / 440.0)
         fun fromCents(cents: Double): Double = 440.0 * 2.0.pow(cents / 1200.0)

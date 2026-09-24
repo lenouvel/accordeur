@@ -1,5 +1,6 @@
 package com.blenouvel.accordeur
 
+import com.blenouvel.accordeur.audio.Biquad
 import java.util.Random
 import kotlin.math.PI
 import kotlin.math.exp
@@ -49,6 +50,71 @@ object TestSignals {
             for (i in 0 until n) out[i] += a * exp(-i / (tau * SAMPLE_RATE)) * sin(w * i + phase)
         }
         normalize(out, amplitude)
+        return out
+    }
+
+    /**
+     * Corde filée au spectre physiquement plausible : pincement triangulaire à [pluckPosition] de
+     * la longueur (amplitudes sin(hπp)/h²), rayonnement ∝ h^[radiation] (1 : force au chevalet,
+     * guitare acoustique ; 2 : dipôle, guitare électrique non branchée — les aigus dominent),
+     * partiels f_h = h·f0·√(1 + B·h²) jusqu'à 5 kHz, les aigus s'éteignant plus vite.
+     */
+    fun stiffPluck(
+        f1: Double,
+        inharmonicity: Double,
+        seconds: Double,
+        pluckPosition: Double = 0.18,
+        radiation: Double = 1.0,
+        decaySeconds: Double = 4.0,
+        amplitude: Double = 0.3,
+        seed: Long = 1,
+    ): DoubleArray {
+        val random = Random(seed)
+        val f0 = f1 / sqrt(1.0 + inharmonicity)
+        val n = (seconds * SAMPLE_RATE).toInt()
+        val out = DoubleArray(n)
+        var h = 1
+        while (true) {
+            val fh = h * f0 * sqrt(1.0 + inharmonicity * h * h)
+            if (fh > 5000.0) break
+            val a = sin(h * PI * pluckPosition) / (h.toDouble() * h) * h.toDouble().pow(radiation)
+            val tau = decaySeconds / (1.0 + (fh / 700.0).pow(2))
+            val phase = random.nextDouble() * 2.0 * PI
+            val w = 2.0 * PI * fh / SAMPLE_RATE
+            for (i in 0 until n) out[i] += a * exp(-i / (tau * SAMPLE_RATE)) * sin(w * i + phase)
+            h++
+        }
+        normalize(out, amplitude)
+        return out
+    }
+
+    /** Passe-haut de Butterworth d'ordre 4 : chemin micro « voix » d'un téléphone (coupe les graves). */
+    fun highPass(signal: DoubleArray, cutoff: Double): DoubleArray {
+        val first = Biquad.highPass(SAMPLE_RATE, cutoff, 0.5411961001461969)
+        val second = Biquad.highPass(SAMPLE_RATE, cutoff, 1.3065629648763764)
+        return DoubleArray(signal.size) { second.process(first.process(signal[it])) }
+    }
+
+    /** Bruit rose (filtre de Paul Kellet) ou « grondement » (bruit brun), de valeur efficace [rms]. */
+    fun coloredNoise(n: Int, rms: Double, brown: Boolean, seed: Long = 11): DoubleArray {
+        val random = Random(seed)
+        var b0 = 0.0
+        var b1 = 0.0
+        var b2 = 0.0
+        val out = DoubleArray(n) {
+            val w = random.nextGaussian()
+            if (brown) {
+                b0 = 0.998 * b0 + w
+                b0
+            } else {
+                b0 = 0.99765 * b0 + w * 0.0990460
+                b1 = 0.96300 * b1 + w * 0.2965164
+                b2 = 0.57000 * b2 + w * 1.0526913
+                b0 + b1 + b2 + w * 0.1848
+            }
+        }
+        val scale = rms / rms(out)
+        for (i in out.indices) out[i] *= scale
         return out
     }
 
