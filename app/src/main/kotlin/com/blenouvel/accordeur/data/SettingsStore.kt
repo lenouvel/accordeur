@@ -13,9 +13,12 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.blenouvel.accordeur.audio.TunerMode
 import com.blenouvel.accordeur.model.CustomTuningCodec
+import com.blenouvel.accordeur.model.FretLabels
+import com.blenouvel.accordeur.model.FretboardMap
 import com.blenouvel.accordeur.model.Notation
 import com.blenouvel.accordeur.model.NoteMapper
 import com.blenouvel.accordeur.model.Presets
+import com.blenouvel.accordeur.model.ScaleCatalog
 import com.blenouvel.accordeur.model.Tuning
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -40,6 +43,12 @@ data class Settings(
     val keepScreenOn: Boolean = true,
     val tuningId: String = Presets.DEFAULT.id,
     val customTunings: List<Tuning> = emptyList(),
+    /** Vue « Gammes » : fondamentale (classe de hauteur 0 = Do), gamme, cases, étiquettes, gaucher. */
+    val scaleRoot: Int = 0,
+    val scaleId: String = ScaleCatalog.DEFAULT.id,
+    val scaleFrets: Int = FretboardMap.FRET_COUNTS.first(),
+    val scaleLabels: FretLabels = FretLabels.NOTES,
+    val leftHanded: Boolean = false,
 ) {
     /** Accordage courant (repli sur Standard 6 cordes si l'identifiant n'existe plus). */
     val tuning: Tuning
@@ -86,6 +95,16 @@ class SettingsStore(context: Context) {
 
     suspend fun selectTuning(id: String) = edit { it[TUNING_ID] = id }
 
+    suspend fun setScaleRoot(pitchClass: Int) = edit { it[SCALE_ROOT] = pitchClass.mod(12) }
+
+    suspend fun setScale(id: String) = edit { it[SCALE_ID] = id }
+
+    suspend fun setScaleFrets(frets: Int) = edit { it[SCALE_FRETS] = frets }
+
+    suspend fun setScaleLabels(value: FretLabels) = edit { it[SCALE_LABELS] = value.name }
+
+    suspend fun setLeftHanded(value: Boolean) = edit { it[LEFT_HANDED] = value }
+
     /** Ajoute ou remplace (même identifiant) un accordage personnalisé, puis le sélectionne. */
     suspend fun saveCustomTuning(tuning: Tuning) = edit { prefs ->
         val current = CustomTuningCodec.decode(prefs[CUSTOM_TUNINGS])
@@ -122,6 +141,11 @@ class SettingsStore(context: Context) {
             keepScreenOn = this[KEEP_SCREEN_ON] ?: defaults.keepScreenOn,
             tuningId = this[TUNING_ID] ?: defaults.tuningId,
             customTunings = CustomTuningCodec.decode(this[CUSTOM_TUNINGS]),
+            scaleRoot = (this[SCALE_ROOT] ?: defaults.scaleRoot).mod(12),
+            scaleId = ScaleCatalog.byId(this[SCALE_ID]).id,
+            scaleFrets = this[SCALE_FRETS]?.takeIf { it in FretboardMap.FRET_COUNTS } ?: defaults.scaleFrets,
+            scaleLabels = enumOf(this[SCALE_LABELS], defaults.scaleLabels),
+            leftHanded = this[LEFT_HANDED] ?: defaults.leftHanded,
         )
     }
 
@@ -141,5 +165,10 @@ class SettingsStore(context: Context) {
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val TUNING_ID = stringPreferencesKey("tuning_id")
         val CUSTOM_TUNINGS = stringPreferencesKey("custom_tunings")
+        val SCALE_ROOT = intPreferencesKey("scale_root")
+        val SCALE_ID = stringPreferencesKey("scale_id")
+        val SCALE_FRETS = intPreferencesKey("scale_frets")
+        val SCALE_LABELS = stringPreferencesKey("scale_labels")
+        val LEFT_HANDED = booleanPreferencesKey("left_handed")
     }
 }

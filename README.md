@@ -1,15 +1,17 @@
 # Accordeur — guitare 6 et 7 cordes (Android natif)
 
 Accordeur de précision pour Samsung S25 (et tout Android 8+), écrit en Kotlin + Jetpack Compose,
-sans NDK. Spécification complète : [`PLAN.md`](PLAN.md).
+sans NDK, avec une vue **Gammes** qui affiche gammes et modes sur un manche vertical.
+Spécification de l'accordeur : [`PLAN.md`](PLAN.md).
 
 - **Mono** : une corde à la fois, précision ~0,1 cent sur signal propre, lecture stable à ±0,5 cent.
 - **Poly** (type PolyTune) : on gratte toutes les cordes, chacune s'affiche trop basse / juste / trop haute.
 - Cordes **très graves** : détection fiable jusqu'à ~35 Hz (G♯1 = 51,91 Hz en Drop G♯).
 - Notation **française** (Do Ré Mi), **anglaise** (C D E) ou **les deux**.
 - Accordages fournis : 6 cordes Standard, Drop D ; 7 cordes Standard, Drop A, Drop G♯
-  (`G#D#G#C#F#A#D#`) ; plus Mi♭ standard, Ré standard, Drop C♯, Drop C, DADGAD, Open G, Open D,
-  Mi♭ standard 7 cordes, et un **éditeur d'accordages personnalisés** (4 à 8 cordes).
+  (`G#D#G#C#F#A#D#`) ; plus Mi♭ / Ré / Do / Si standard, Drop C♯, Drop C, Drop B, Double Drop D,
+  DADGAD, Open G, D, E, A, C ; 7 cordes Mi♭ standard, La standard, Drop G ; et un **éditeur
+  d'accordages personnalisés** (4 à 8 cordes).
 - La de référence réglable (430–450 Hz, pas de 0,5 Hz), tolérance réglable (±1 à ±15 cents).
 - Thème sombre par défaut (clair / système / Material You), vibration quand une corde est juste,
   écran maintenu allumé, **son de référence** (appui long sur une corde).
@@ -69,6 +71,46 @@ Le traitement du signal est en Kotlin pur : il est testé sur la JVM avec des si
 La jauge passe au vert dans la tolérance (±5 cents par défaut, « Parfait » sous ±3 cents) ; une
 corde restée juste ~0,35 s passe au vert dans la rangée (avec une légère vibration).
 
+La barre du bas bascule entre **Accordeur** et **Gammes** ; les réglages (⚙) sont accessibles
+depuis les deux. Le micro n'est actif que sur l'accordeur.
+
+## Gammes sur le manche
+
+Manche **vertical** (tête en haut, corde grave à gauche), pensé pour une main sur le téléphone :
+
+| Réglage | Choix |
+|---|---|
+| **Tonalité** | 12 notes, sur un clavier d'une octave (touches noires : « Do♯ / Ré♭ ») |
+| **Gamme / mode** | 41 gammes en 6 familles (liste ci-dessous), avec leurs degrés dans le sélecteur |
+| **Accordage** | tous les accordages de l'accordeur (6, 7 cordes, personnalisés 4–8 cordes) — partagé avec l'accordeur |
+| **Cases** | 12, 15 ou 22 (12 et 15 tiennent sans défilement sur un S25, 22 défile) |
+| **Notes / Degrés** | nom des notes (notation FR/EN des réglages) ou intervalles (1, ♭3, ♯4…) |
+| **Gaucher** | manche en miroir (corde grave à droite) |
+
+- La **fondamentale** est dans la couleur d'accent ; les notes à vide sont cerclées en tête du manche.
+- La rangée des notes de la gamme sert de légende : **toucher un degré le met en évidence** (ambre)
+  sur tout le manche — par exemple 3 et 5 pour voir l'arpège.
+- **Toucher une case** fait entendre la note (dans ou hors de la gamme).
+- La formule (T T ½T T T T ½T…) est affichée à côté des options.
+- Orthographe musicale correcte : chaque degré a sa lettre (Si♭ en Fa majeur, Mi♯ en Fa♯ majeur) ;
+  pour une tonalité sur touche noire, l'enharmonie la plus simple est choisie (Ré♭ majeur,
+  Do♯ mineur).
+- Tous ces choix sont mémorisés.
+
+Gammes disponibles :
+
+- **Gamme majeure et ses modes** : majeure (ionien), dorien, phrygien, lydien, mixolydien,
+  mineure naturelle (éolien), locrien.
+- **Pentatoniques et blues** : pentatonique majeure, pentatonique mineure, blues (mineure),
+  blues majeure, pentatonique suspendue (égyptienne), hirajoshi, in-sen.
+- **Mineure harmonique et ses modes** : mineure harmonique, locrien ♮6, ionien augmenté,
+  dorien ♯4 (roumain), phrygien dominant (espagnole), lydien ♯2, superlocrien ♭♭7.
+- **Mineure mélodique et ses modes** : mineure mélodique, dorien ♭2, lydien augmenté,
+  lydien dominant, mixolydien ♭6, locrien ♮2 (semi-diminué), altérée.
+- **Symétriques** : par tons, diminuée ton/demi-ton, diminuée demi-ton/ton, chromatique.
+- **Autres** : majeure harmonique, double harmonique (byzantine), mineure hongroise, napolitaines
+  mineure et majeure, persane, énigmatique, bebop dominante, bebop majeure.
+
 ## Architecture
 
 ```
@@ -79,8 +121,9 @@ Micro ─► AudioEngine ─► TunerProcessor ───────────
 
 ```
 app/src/main/kotlin/com/blenouvel/accordeur/
-├─ MainActivity.kt          permission micro, navigation, start/stop audio (onResume/onPause), écran allumé
+├─ MainActivity.kt          navigation (Accordeur / Gammes / Réglages), permission micro, start/stop audio, écran allumé
 ├─ TunerViewModel.kt        état UI (StateFlow), verrou de corde, cordes « au vert », son de référence
+├─ ScalesViewModel.kt       vue Gammes : réglages mémorisés, degrés mis en évidence, notes jouées
 ├─ audio/
 │  ├─ AudioEngine.kt        AudioRecord UNPROCESSED → VOICE_RECOGNITION → MIC, 48 kHz float (replis 44,1 kHz / 16 bits)
 │  ├─ TunerProcessor.kt     chaîne complète indépendante d'Android : filtres, tampon circulaire, analyses, poly
@@ -90,10 +133,13 @@ app/src/main/kotlin/com/blenouvel/accordeur/
 │  ├─ Fft.kt                FFT radix-2 complexe + FFT réelle (Kotlin pur)
 │  ├─ Biquad.kt             DC block, passe-haut 32 Hz, passe-bas 1,3 kHz (ordre 4)
 │  ├─ OneEuroFilter.kt      lissage adaptatif de l'aiguille
-│  └─ ReferenceTone.kt      son de référence (synthèse additive, AudioTrack)
+│  └─ ReferenceTone.kt      son d'une note (synthèse additive en arrière-plan, AudioTrack)
 ├─ model/                   Note, GuitarString, Tuning, presets ; NoteMapper (fréq ↔ MIDI ↔ note ↔ cents, FR/EN)
+│                           Scales : catalogue des gammes, degrés, formule, orthographe, positions sur le manche
 ├─ data/SettingsStore.kt    réglages (DataStore)
-└─ ui/                      TunerScreen, TunerMeter (jauge Canvas), StringSelector, PolyMeter, TuningSheet, SettingsScreen, thème
+└─ ui/                      TunerScreen, TunerMeter (jauge Canvas), StringSelector, PolyMeter, TuningSheet,
+                            ScalesScreen, FretboardView (manche Canvas), ScalePickers (clavier, gammes),
+                            SettingsScreen, AppIcons, thème
 ```
 
 ### Traitement du signal (mode mono)
@@ -173,12 +219,15 @@ Toutes les versions sont centralisées dans `gradle/libs.versions.toml`.
 
 Faites dans l'environnement de développement (sans SDK Android, Google Maven y étant inaccessible) :
 
-- compilation et exécution des 29 tests JUnit (DSP, modèle, poly) ;
+- compilation et exécution des 36 tests JUnit (DSP, modèle, poly, gammes) ;
 - compilation de **tout** le code de l'app (UI Compose, ViewModel, AudioEngine, DataStore,
   MainActivity) contre Compose 1.12.1 / Material 3 1.4, le framework Android réel (API 37) et
-  des stubs pour activity / DataStore / lifecycle : aucune erreur, aucun avertissement.
+  des stubs pour activity / DataStore / lifecycle : aucune erreur, aucun avertissement ;
+- rendu des écrans Accordeur et Gammes (vrai code, Compose Desktop + Skia, à la taille d'un S25)
+  pour contrôle visuel de la mise en page.
 
 À faire sur la machine de build / le téléphone (non exécuté ici) : synchronisation Gradle réelle
 avec AGP 9.3.3, `assembleDebug`, et la recette manuelle du plan (§12) : chaque corde de chaque
 preset, robustesse au bruit ambiant, cordes graves (Drop G♯, Drop A), bascule Mono/Poly,
-notation FR/EN, La de référence, accordage personnalisé, thèmes.
+notation FR/EN, La de référence, accordage personnalisé, thèmes ; vue Gammes (sélecteurs,
+12 / 15 / 22 cases, notes jouées au toucher, gaucher).

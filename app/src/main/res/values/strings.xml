@@ -96,4 +96,21 @@
     <string name="error_unavailable">Micro indisponible (utilisé par une autre application ?)</string>
     <string name="error_read">Erreur de capture audio</string>
     <string name="retry">Réessayer</string>
+    <!-- Navigation -->
+    <string name="nav_tuner">Accordeur</string>
+    <string name="nav_scales">Gammes</string>
+
+    <!-- Gammes sur le manche -->
+    <string name="scales_key">Tonalité</string>
+    <string name="scales_scale">Gamme / mode</string>
+    <string name="scales_tuning">Accordage</string>
+    <string name="scales_frets">Cases</string>
+    <string name="labels_notes">Notes</string>
+    <string name="labels_degrees">Degrés</string>
+    <string name="left_handed">Gaucher</string>
+    <string name="key_sheet_title">Tonalité</string>
+    <string name="scale_sheet_title">Gamme ou mode</string>
+    <string name="formula_description">Formule : %1$s</string>
+    <string name="cd_highlight_degree">Degré %1$s (%2$s) : mettre en évidence sur le manche</string>
+    <string name="fretboard_description">Manche : %1$s %2$s, accordage %3$s, %4$d cases. Touchez une case pour l\'entendre.</string>
 </resources>

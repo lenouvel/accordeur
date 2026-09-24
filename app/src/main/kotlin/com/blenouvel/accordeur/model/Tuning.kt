@@ -99,12 +99,21 @@ object Presets {
     val extras: List<Tuning> = listOf(
         tuning("eb6", "Mi♭ standard", "D#2 G#2 C#3 F#3 A#3 D#4"),
         tuning("d6", "Ré standard", "D2 G2 C3 F3 A3 D4"),
+        tuning("c6", "Do standard", "C2 F2 A#2 D#3 G3 C4"),
+        tuning("b6", "Si standard", "B1 E2 A2 D3 F#3 B3"),
         tuning("dropcs6", "Drop C♯", "C#2 G#2 C#3 F#3 A#3 D#4"),
         tuning("dropc6", "Drop C", "C2 G2 C3 F3 A3 D4"),
+        tuning("dropb6", "Drop B", "B1 F#2 B2 E3 G#3 C#4"),
+        tuning("doubledropd6", "Double Drop D", "D2 A2 D3 G3 B3 D4"),
         tuning("dadgad6", "DADGAD", "D2 A2 D3 G3 A3 D4"),
         tuning("openg6", "Open G", "D2 G2 D3 G3 B3 D4"),
         tuning("opend6", "Open D", "D2 A2 D3 F#3 A3 D4"),
+        tuning("opene6", "Open E", "E2 B2 E3 G#3 B3 E4"),
+        tuning("opena6", "Open A", "E2 A2 E3 A3 C#4 E4"),
+        tuning("openc6", "Open C", "C2 G2 C3 G3 C4 E4"),
         tuning("eb7", "Mi♭ standard", "A#1 D#2 G#2 C#3 F#3 A#3 D#4"),
+        tuning("a7", "La standard", "A1 D2 G2 C3 F3 A3 D4"),
+        tuning("dropg7", "Drop G", "G1 D2 G2 C3 F3 A3 D4"),
     )
 
     val all: List<Tuning> = required + extras

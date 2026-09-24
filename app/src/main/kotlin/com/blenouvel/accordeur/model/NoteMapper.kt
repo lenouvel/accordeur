@@ -68,6 +68,15 @@ object NoteNames {
         Notation.BOTH -> "${french(note.pitchClass)}${note.octave} / ${english(note.pitchClass)}${note.octave}"
     }
 
+    private val FRENCH_LETTERS = arrayOf("Do", "Ré", "Mi", "Fa", "Sol", "La", "Si")
+    private val ENGLISH_LETTERS = arrayOf("C", "D", "E", "F", "G", "A", "B")
+
+    /** Note orthographiée (gammes) : « Si♭ », « Fa♯♯ », « B♭ ». BOTH → nom français. */
+    fun spelled(note: SpelledNote, notation: Notation): String {
+        val letters = if (notation == Notation.ENGLISH) ENGLISH_LETTERS else FRENCH_LETTERS
+        return letters[note.letter] + ScaleType.accidentalSymbol(note.accidental)
+    }
+
     /** Suite des notes d'un accordage sans octave, ex. « Mi La Ré Sol Si Mi ». */
     fun sequence(tuning: Tuning, notation: Notation): String =
         tuning.strings.joinToString(" ") { primary(it.pitchClass, notation) }

@@ -144,9 +144,9 @@ class TunerViewModel(
         val string = settings.tuning.strings.getOrNull(index) ?: return
         toneJob?.cancel()
         engine.muteFor(ReferenceTone.DURATION_MS + TONE_ECHO_MS)
-        referenceTone.play(string.frequency(settings.a4))
         _uiState.update { it.copy(playingString = index) }
         toneJob = viewModelScope.launch {
+            referenceTone.play(string.frequency(settings.a4))
             delay(ReferenceTone.DURATION_MS.toLong())
             referenceTone.stop()
             _uiState.update { it.copy(playingString = -1) }

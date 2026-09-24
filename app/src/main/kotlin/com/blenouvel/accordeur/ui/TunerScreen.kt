@@ -90,77 +90,79 @@ fun TunerScreen(
         seenTunedEvents = state.tunedEvents
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .safeDrawingPadding()
-            .padding(horizontal = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        TopBar(state, onOpenTunings, onOpenSettings)
-        Spacer(Modifier.height(12.dp))
-        ModeSelector(settings.tunerMode, onModeChange)
-
-        val failure = (state.engineState as? EngineState.Failed)?.error
-        if (failure != null && failure != EngineError.PERMISSION) {
+    // Surface : fond et couleur de contenu (icônes, textes) du thème, quel que soit le parent.
+    Surface(color = MaterialTheme.colorScheme.background, modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            TopBar(state, onOpenTunings, onOpenSettings)
             Spacer(Modifier.height(12.dp))
-            EngineErrorCard(failure, onRetry)
-        }
+            ModeSelector(settings.tunerMode, onModeChange)
 
-        Spacer(Modifier.weight(1f))
-        if (poly) {
-            Text(
-                text = stringResource(R.string.strum_all_strings),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.alpha(if (state.poly == null) 1f else 0.5f),
-            )
-            Spacer(Modifier.height(16.dp))
-            PolyMeter(
-                stringCount = state.tuning.stringCount,
-                reading = state.poly,
-                toleranceCents = settings.toleranceCents,
-                modifier = Modifier.height(240.dp),
-            )
-            if (state.poly?.strings?.any { it.detected && !it.reliable } == true) {
-                Text(
-                    text = stringResource(R.string.poly_approximate),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+            val failure = (state.engineState as? EngineState.Failed)?.error
+            if (failure != null && failure != EngineError.PERMISSION) {
+                Spacer(Modifier.height(12.dp))
+                EngineErrorCard(failure, onRetry)
             }
-        } else {
-            NoteDisplay(state)
-            TunerMeter(
-                cents = state.cents,
-                toleranceCents = settings.toleranceCents,
-                holding = state.holding,
-                modifier = Modifier.widthIn(max = 480.dp),
-            )
-            CentsReadout(state)
-        }
-        Spacer(Modifier.weight(1f))
 
-        StringSelector(
-            tuning = state.tuning,
-            notation = settings.notation,
-            activeString = state.activeString,
-            lockedString = state.lockedString,
-            tunedStrings = state.tunedStrings,
-            playingString = state.playingString,
-            poly = state.poly?.strings,
-            toleranceCents = settings.toleranceCents,
-            onTap = onStringTap,
-            onLongPress = onStringLongPress,
-        )
-        Spacer(Modifier.height(12.dp))
-        BottomHints(state, onDetectionModeChange)
-        Spacer(Modifier.height(8.dp))
-        LevelIndicator(state)
-        Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.weight(1f))
+            if (poly) {
+                Text(
+                    text = stringResource(R.string.strum_all_strings),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.alpha(if (state.poly == null) 1f else 0.5f),
+                )
+                Spacer(Modifier.height(16.dp))
+                PolyMeter(
+                    stringCount = state.tuning.stringCount,
+                    reading = state.poly,
+                    toleranceCents = settings.toleranceCents,
+                    modifier = Modifier.height(240.dp),
+                )
+                if (state.poly?.strings?.any { it.detected && !it.reliable } == true) {
+                    Text(
+                        text = stringResource(R.string.poly_approximate),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            } else {
+                NoteDisplay(state)
+                TunerMeter(
+                    cents = state.cents,
+                    toleranceCents = settings.toleranceCents,
+                    holding = state.holding,
+                    modifier = Modifier.widthIn(max = 480.dp),
+                )
+                CentsReadout(state)
+            }
+            Spacer(Modifier.weight(1f))
+
+            StringSelector(
+                tuning = state.tuning,
+                notation = settings.notation,
+                activeString = state.activeString,
+                lockedString = state.lockedString,
+                tunedStrings = state.tunedStrings,
+                playingString = state.playingString,
+                poly = state.poly?.strings,
+                toleranceCents = settings.toleranceCents,
+                onTap = onStringTap,
+                onLongPress = onStringLongPress,
+            )
+            Spacer(Modifier.height(12.dp))
+            BottomHints(state, onDetectionModeChange)
+            Spacer(Modifier.height(8.dp))
+            LevelIndicator(state)
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }
 

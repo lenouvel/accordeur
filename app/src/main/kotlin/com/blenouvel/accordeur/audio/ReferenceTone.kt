@@ -4,24 +4,33 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Son de référence d'une corde, pour accorder à l'oreille. Synthèse additive exacte (partiels
- * harmoniques 1…8 en 1/h, enveloppe de corde pincée) : un haut-parleur de téléphone ne restitue pas
- * 52 Hz, mais les harmoniques font entendre la bonne hauteur (fondamentale « virtuelle »).
+ * Son d'une note (référence de l'accordeur, notes touchées sur le manche). Synthèse additive
+ * exacte (partiels harmoniques 1…8 en 1/h, enveloppe de corde pincée) : un haut-parleur de
+ * téléphone ne restitue pas 52 Hz, mais les harmoniques font entendre la bonne hauteur.
+ *
+ * À appeler depuis le thread principal : la synthèse se fait en arrière-plan, une nouvelle
+ * lecture remplace la précédente.
  */
 class ReferenceTone {
     private var track: AudioTrack? = null
+    private var generation = 0
 
-    /** Joue [frequency] pendant [durationMs] ms (la lecture précédente est coupée). */
-    fun play(frequency: Double, durationMs: Int = DURATION_MS) {
-        stop()
-        val samples = synthesize(frequency, durationMs)
+    /** Joue [frequency] pendant [durationMs] ms (la lecture en cours est coupée). */
+    suspend fun play(frequency: Double, durationMs: Int = DURATION_MS) {
+        val request = ++generation
+        val samples = withContext(Dispatchers.Default) { synthesize(frequency, durationMs) }
+        if (request != generation) return // une lecture plus récente a été demandée entre-temps
+        release()
         try {
             val t = AudioTrack.Builder()
                 .setAudioAttributes(
@@ -48,7 +57,13 @@ class ReferenceTone {
         }
     }
 
+    /** Coupe le son (et annule une lecture en préparation). */
     fun stop() {
+        generation++
+        release()
+    }
+
+    private fun release() {
         val t = track ?: return
         track = null
         try {
@@ -64,10 +79,19 @@ class ReferenceTone {
         for (h in 1..PARTIALS) {
             val fh = h * frequency
             if (fh > MAX_PARTIAL_HZ) break
+            // Oscillateur récursif (rotation) + décroissance exponentielle : ni sin ni exp par échantillon.
             val w = 2.0 * PI * fh / SAMPLE_RATE
-            val amplitude = 1.0 / h
-            val decay = DECAY_S * SAMPLE_RATE / (1.0 + 0.3 * (h - 1))
-            for (i in 0 until n) out[i] += amplitude * exp(-i / decay) * sin(w * i)
+            val c = cos(w)
+            val s = sin(w)
+            val decay = exp(-(1.0 + 0.3 * (h - 1)) / (DECAY_S * SAMPLE_RATE))
+            var x = 1.0 / h
+            var y = 0.0
+            for (i in 0 until n) {
+                out[i] += y
+                val nx = (x * c - y * s) * decay
+                y = (x * s + y * c) * decay
+                x = nx
+            }
         }
         val attack = SAMPLE_RATE * ATTACK_MS / 1000
         val release = SAMPLE_RATE * RELEASE_MS / 1000
@@ -83,6 +107,10 @@ class ReferenceTone {
 
     companion object {
         const val DURATION_MS = 2500
+
+        /** Durée d'une note touchée sur le manche. */
+        const val NOTE_MS = 1600
+
         private const val SAMPLE_RATE = 48_000
         private const val PARTIALS = 8
         private const val MAX_PARTIAL_HZ = 6000.0

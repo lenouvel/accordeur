@@ -20,12 +20,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -49,6 +55,9 @@ import com.blenouvel.accordeur.audio.AudioEngine
 import com.blenouvel.accordeur.audio.ReferenceTone
 import com.blenouvel.accordeur.data.SettingsStore
 import com.blenouvel.accordeur.data.ThemeMode
+import com.blenouvel.accordeur.ui.AppIcons
+import com.blenouvel.accordeur.ui.ScalesActions
+import com.blenouvel.accordeur.ui.ScalesScreen
 import com.blenouvel.accordeur.ui.SettingsActions
 import com.blenouvel.accordeur.ui.SettingsScreen
 import com.blenouvel.accordeur.ui.TunerScreen
@@ -67,6 +76,9 @@ class MainActivity : ComponentActivity() {
                     referenceTone = ReferenceTone(),
                 )
             }
+            val scalesViewModel: ScalesViewModel = viewModel {
+                ScalesViewModel(settingsStore = SettingsStore(applicationContext), tone = ReferenceTone())
+            }
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val darkTheme = when (state.settings.theme) {
                 ThemeMode.DARK -> true
@@ -83,16 +95,16 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             AccordeurTheme(darkTheme = darkTheme, dynamicColor = state.settings.dynamicColor) {
-                AccordeurApp(viewModel, state)
+                AccordeurApp(viewModel, scalesViewModel, state)
             }
         }
     }
 }
 
-private enum class Screen { TUNER, SETTINGS }
+private enum class Screen { TUNER, SCALES, SETTINGS }
 
 @Composable
-private fun AccordeurApp(viewModel: TunerViewModel, state: TunerUiState) {
+private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewModel, state: TunerUiState) {
     val context = LocalContext.current
     var granted by rememberSaveable { mutableStateOf(hasMicPermission(context)) }
     var askedOnce by rememberSaveable { mutableStateOf(false) }
@@ -109,41 +121,29 @@ private fun AccordeurApp(viewModel: TunerViewModel, state: TunerUiState) {
         onPauseOrDispose { }
     }
 
-    if (!granted) {
-        PermissionScreen(
-            permanentlyDenied = askedOnce && !shouldShowRationale(context),
-            onRequest = { launcher.launch(Manifest.permission.RECORD_AUDIO) },
-            onOpenSettings = { openAppSettings(context) },
-        )
-        return
+    var screen by rememberSaveable { mutableStateOf(Screen.TUNER) }
+    var returnTo by rememberSaveable { mutableStateOf(Screen.TUNER) }
+    var showTunings by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = screen != Screen.TUNER) {
+        screen = if (screen == Screen.SETTINGS) returnTo else Screen.TUNER
+    }
+    val openSettings = {
+        returnTo = screen
+        screen = Screen.SETTINGS
     }
 
-    // Micro actif seulement au premier plan : start en onResume, stop en onPause.
-    LifecycleResumeEffect(viewModel) {
-        viewModel.start()
-        onPauseOrDispose { viewModel.stop() }
+    // Micro actif seulement pour l'accordeur (et ses réglages), au premier plan : start en
+    // onResume, stop en onPause ou en passant sur la vue Gammes.
+    if (granted && screen != Screen.SCALES) {
+        LifecycleResumeEffect(viewModel) {
+            viewModel.start()
+            onPauseOrDispose { viewModel.stop() }
+        }
     }
     KeepScreenOn(state.settings.keepScreenOn)
 
-    var screen by rememberSaveable { mutableStateOf(Screen.TUNER) }
-    var showTunings by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = screen == Screen.SETTINGS) { screen = Screen.TUNER }
-
-    when (screen) {
-        Screen.TUNER -> TunerScreen(
-            state = state,
-            onOpenSettings = { screen = Screen.SETTINGS },
-            onOpenTunings = { showTunings = true },
-            onModeChange = viewModel::setTunerMode,
-            onDetectionModeChange = viewModel::setDetectionMode,
-            onStringTap = viewModel::onStringTapped,
-            onStringLongPress = viewModel::playReferenceTone,
-            onRetry = {
-                viewModel.stop()
-                viewModel.start()
-            },
-        )
-        Screen.SETTINGS -> SettingsScreen(
+    if (screen == Screen.SETTINGS) {
+        SettingsScreen(
             state = state,
             actions = SettingsActions(
                 setA4 = viewModel::setA4,
@@ -156,8 +156,57 @@ private fun AccordeurApp(viewModel: TunerViewModel, state: TunerUiState) {
                 setHaptics = viewModel::setHaptics,
                 setKeepScreenOn = viewModel::setKeepScreenOn,
             ),
-            onBack = { screen = Screen.TUNER },
+            onBack = { screen = returnTo },
         )
+    } else {
+        Scaffold(
+            bottomBar = { AppNavigationBar(current = screen, onSelect = { screen = it }) },
+            containerColor = MaterialTheme.colorScheme.background,
+        ) { inner ->
+            Box(
+                Modifier
+                    .padding(inner)
+                    .consumeWindowInsets(inner),
+            ) {
+                if (screen == Screen.SCALES) {
+                    val scalesState by scalesViewModel.uiState.collectAsStateWithLifecycle()
+                    ScalesScreen(
+                        state = scalesState,
+                        actions = ScalesActions(
+                            onRootChange = scalesViewModel::setRoot,
+                            onScaleChange = scalesViewModel::setScale,
+                            onFretsChange = scalesViewModel::setFrets,
+                            onLabelsChange = scalesViewModel::setLabels,
+                            onLeftHandedChange = scalesViewModel::setLeftHanded,
+                            onToggleDegree = scalesViewModel::toggleDegree,
+                            onPlay = scalesViewModel::play,
+                            onOpenTunings = { showTunings = true },
+                            onOpenSettings = openSettings,
+                        ),
+                    )
+                } else if (granted) {
+                    TunerScreen(
+                        state = state,
+                        onOpenSettings = openSettings,
+                        onOpenTunings = { showTunings = true },
+                        onModeChange = viewModel::setTunerMode,
+                        onDetectionModeChange = viewModel::setDetectionMode,
+                        onStringTap = viewModel::onStringTapped,
+                        onStringLongPress = viewModel::playReferenceTone,
+                        onRetry = {
+                            viewModel.stop()
+                            viewModel.start()
+                        },
+                    )
+                } else {
+                    PermissionScreen(
+                        permanentlyDenied = askedOnce && !shouldShowRationale(context),
+                        onRequest = { launcher.launch(Manifest.permission.RECORD_AUDIO) },
+                        onOpenSettings = { openAppSettings(context) },
+                    )
+                }
+            }
+        }
     }
 
     if (showTunings) {
@@ -169,6 +218,25 @@ private fun AccordeurApp(viewModel: TunerViewModel, state: TunerUiState) {
             onSave = viewModel::saveCustomTuning,
             onDelete = viewModel::deleteCustomTuning,
             onDismiss = { showTunings = false },
+        )
+    }
+}
+
+/** Barre de navigation : accordeur / gammes. */
+@Composable
+private fun AppNavigationBar(current: Screen, onSelect: (Screen) -> Unit) {
+    NavigationBar {
+        NavigationBarItem(
+            selected = current == Screen.TUNER,
+            onClick = { onSelect(Screen.TUNER) },
+            icon = { Icon(AppIcons.Tuner, contentDescription = null) },
+            label = { Text(stringResource(R.string.nav_tuner)) },
+        )
+        NavigationBarItem(
+            selected = current == Screen.SCALES,
+            onClick = { onSelect(Screen.SCALES) },
+            icon = { Icon(AppIcons.Fretboard, contentDescription = null) },
+            label = { Text(stringResource(R.string.nav_scales)) },
         )
     }
 }
