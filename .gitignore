@@ -19,3 +19,7 @@ local.properties
 # Système
 .DS_Store
 Thumbs.db
+
+# Banque de sons exportée du téléphone, décompressée pour BankReplayTest (volumineuse :
+# à versionner plutôt avec Git LFS si besoin).
+testbank/

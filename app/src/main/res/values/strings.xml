@@ -98,16 +98,27 @@
     <string name="mic_camcorder_desc">Chemin vidéo du téléphone</string>
     <string name="mic_standard">Standard (MIC)</string>
     <string name="mic_standard_desc">Avec les traitements du téléphone (gain automatique…)</string>
-    <string name="mic_active">En service : %1$s · %2$d Hz</string>
+    <string name="mic_active">En service : %1$s · %2$s</string>
     <string name="mic_fallback">« %1$s » refusée par le téléphone</string>
     <string name="mic_test_idle">Test : jouez une corde</string>
     <string name="mic_test_listening">Test : son entendu, pas de note</string>
     <string name="mic_test_note">Test : %1$s  %2$s ¢</string>
     <string name="about_idle">Micro inactif</string>
+    <string name="bank_title">Banque de sons de test</string>
+    <string name="bank_desc">Garde sur le téléphone le son brut (sans perte) de chaque note jouée, avec ce que l\'accordeur a affiché, pour tester les versions futures. Seuls les moments où ça joue sont gardés (1 Go au plus, les plus anciens partent d\'abord). Rien n\'est envoyé : exportez la banque (Proton Drive, Drive…) quand vous voulez.</string>
+    <string name="bank_record">Enregistrer pendant l\'écoute</string>
+    <string name="bank_empty">Aucun son enregistré</string>
+    <string name="bank_stats">Sons : %1$d · %2$s · %3$s</string>
+    <string name="bank_export">Exporter…</string>
+    <string name="bank_exporting">Préparation…</string>
+    <string name="bank_clear">Vider</string>
+    <string name="bank_clear_confirm">Supprimer les %1$d sons de la banque ?</string>
+    <string name="bank_share_title">Exporter la banque de sons</string>
+    <string name="cd_recording">Enregistrement en cours dans la banque de sons</string>
 
     <!-- Permission et erreurs -->
     <string name="permission_title">Accès au micro</string>
-    <string name="permission_text">L\'accordeur écoute votre guitare avec le micro du téléphone. Le son est analysé en direct : rien n\'est enregistré ni envoyé.</string>
+    <string name="permission_text">L\'accordeur écoute votre guitare avec le micro du téléphone. Le son est analysé en direct et n\'est jamais envoyé. Les notes jouées sont gardées sur le téléphone dans une banque de sons de test, que vous pouvez désactiver ou vider dans les réglages.</string>
     <string name="permission_grant">Autoriser le micro</string>
     <string name="permission_open_settings">Ouvrir les réglages de l\'application</string>
     <string name="permission_denied">Le micro a été refusé. Autorisez-le dans les réglages de l\'application.</string>

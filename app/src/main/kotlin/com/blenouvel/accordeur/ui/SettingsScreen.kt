@@ -25,7 +25,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -37,13 +40,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -51,10 +57,12 @@ import com.blenouvel.accordeur.R
 import com.blenouvel.accordeur.TunerUiState
 import com.blenouvel.accordeur.audio.EngineState
 import com.blenouvel.accordeur.audio.MicSource
+import com.blenouvel.accordeur.audio.isAvailable
 import com.blenouvel.accordeur.audio.TunerMode
 import com.blenouvel.accordeur.data.DetectionMode
 import com.blenouvel.accordeur.data.Settings
 import com.blenouvel.accordeur.data.ThemeMode
+import java.io.File
 import com.blenouvel.accordeur.model.Notation
 import com.blenouvel.accordeur.model.NoteMapper
 import com.blenouvel.accordeur.model.NoteNames
@@ -75,6 +83,10 @@ class SettingsActions(
     val setHaptics: (Boolean) -> Unit,
     val setKeepScreenOn: (Boolean) -> Unit,
     val setMicSource: (MicSource) -> Unit,
+    val setRecordBank: (Boolean) -> Unit,
+    val refreshBank: () -> Unit,
+    val exportBank: (onReady: (File) -> Unit) -> Unit,
+    val clearBank: () -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -169,6 +181,8 @@ fun SettingsScreen(
             HorizontalDivider()
 
             MicSourceSetting(state, actions.setMicSource)
+            HorizontalDivider()
+            SoundBankSetting(state, actions)
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -208,11 +222,62 @@ private fun MicSourceSetting(state: TunerUiState, onSelect: (MicSource) -> Unit)
         val status = when {
             running == null -> stringResource(R.string.about_idle)
             selected != MicSource.AUTO && running.source != selected -> stringResource(R.string.mic_fallback, micSourceLabel(selected)) +
-                " · " + stringResource(R.string.mic_active, micSourceLabel(running.source), running.sampleRate)
-            else -> stringResource(R.string.mic_active, micSourceLabel(running.source), running.sampleRate)
+                " · " + stringResource(R.string.mic_active, micSourceLabel(running.source), formatSampleRate(running.sampleRate))
+            else -> stringResource(R.string.mic_active, micSourceLabel(running.source), formatSampleRate(running.sampleRate))
         }
         Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         MicTest(state)
+    }
+}
+
+/**
+ * Banque de sons de test : enregistrement pendant l'écoute, bilan, export (menu de partage :
+ * Proton Drive…) et suppression.
+ */
+@Composable
+private fun SoundBankSetting(state: TunerUiState, actions: SettingsActions) {
+    val context = LocalContext.current
+    var confirmClear by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { actions.refreshBank() }
+    val stats = state.bank
+    val sounds = stats?.sounds ?: 0
+    Setting(stringResource(R.string.bank_title), stringResource(R.string.bank_desc)) {
+        SwitchRow(stringResource(R.string.bank_record), state.settings.recordBank, actions.setRecordBank)
+        Text(
+            text = if (stats == null || sounds == 0) {
+                stringResource(R.string.bank_empty)
+            } else {
+                stringResource(R.string.bank_stats, sounds, formatDuration(stats.seconds), formatBytes(stats.bytes))
+            },
+            style = MaterialTheme.typography.bodyMedium.merge(NumericStyle),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(
+                onClick = { actions.exportBank { zip -> shareBankArchive(context, zip) } },
+                enabled = sounds > 0 && !state.exporting,
+            ) {
+                Text(stringResource(if (state.exporting) R.string.bank_exporting else R.string.bank_export))
+            }
+            OutlinedButton(onClick = { confirmClear = true }, enabled = sounds > 0 && !state.exporting) {
+                Text(stringResource(R.string.bank_clear))
+            }
+        }
+    }
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            text = { Text(stringResource(R.string.bank_clear_confirm, sounds)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmClear = false
+                    actions.clearBank()
+                }) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
 }
 

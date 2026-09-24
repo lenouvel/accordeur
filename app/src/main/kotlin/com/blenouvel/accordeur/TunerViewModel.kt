@@ -6,6 +6,7 @@ import com.blenouvel.accordeur.audio.AudioEngine
 import com.blenouvel.accordeur.audio.EngineState
 import com.blenouvel.accordeur.audio.MicSource
 import com.blenouvel.accordeur.audio.PolyReading
+import com.blenouvel.accordeur.audio.RecordingContext
 import com.blenouvel.accordeur.audio.ReferenceTone
 import com.blenouvel.accordeur.audio.TunerFrame
 import com.blenouvel.accordeur.audio.TunerMode
@@ -13,6 +14,7 @@ import com.blenouvel.accordeur.audio.TunerTargets
 import com.blenouvel.accordeur.data.DetectionMode
 import com.blenouvel.accordeur.data.Settings
 import com.blenouvel.accordeur.data.SettingsStore
+import com.blenouvel.accordeur.data.SoundBank
 import com.blenouvel.accordeur.data.ThemeMode
 import com.blenouvel.accordeur.model.CustomTuningCodec
 import com.blenouvel.accordeur.model.GuitarString
@@ -29,6 +31,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.abs
 
 /** État complet de l'écran, recalculé à chaque analyse (~23 fois par seconde). */
@@ -60,6 +64,12 @@ data class TunerUiState(
     val poly: PolyReading? = null,
     /** Corde dont le son de référence est en cours de lecture, −1 sinon. */
     val playingString: Int = -1,
+    /** Un son est en cours d'enregistrement dans la banque de test. */
+    val recording: Boolean = false,
+    /** Bilan de la banque de sons (null tant qu'il n'a pas été lu). */
+    val bank: SoundBank.Stats? = null,
+    /** Archive d'export de la banque en préparation. */
+    val exporting: Boolean = false,
 ) {
     val inTune: Boolean get() = cents?.let { abs(it) <= settings.toleranceCents } ?: false
 }
@@ -68,6 +78,7 @@ class TunerViewModel(
     private val settingsStore: SettingsStore,
     private val engine: AudioEngine,
     private val referenceTone: ReferenceTone,
+    private val bank: SoundBank,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TunerUiState())
@@ -90,6 +101,7 @@ class TunerViewModel(
         viewModelScope.launch { settingsStore.settings.collect { onSettings(it) } }
         viewModelScope.launch { engine.frames.collect { onFrame(it) } }
         viewModelScope.launch { engine.state.collect { s -> _uiState.update { it.copy(engineState = s) } } }
+        engine.recorder.onBankChanged = { refreshBank() }
     }
 
     // --- Cycle de vie --------------------------------------------------------------------
@@ -176,6 +188,34 @@ class TunerViewModel(
     fun setHaptics(value: Boolean) = launchSetting { settingsStore.setHaptics(value) }
     fun setKeepScreenOn(value: Boolean) = launchSetting { settingsStore.setKeepScreenOn(value) }
     fun setMicSource(value: MicSource) = launchSetting { settingsStore.setMicSource(value) }
+    fun setRecordBank(value: Boolean) = launchSetting { settingsStore.setRecordBank(value) }
+
+    // --- Banque de sons de test --------------------------------------------------------
+
+    fun refreshBank() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val stats = bank.stats()
+            _uiState.update { it.copy(bank = stats) }
+        }
+    }
+
+    /** Prépare l'archive zip de la banque puis la confie à [onReady] (partage). */
+    fun exportBank(onReady: (File) -> Unit) {
+        if (_uiState.value.exporting) return
+        _uiState.update { it.copy(exporting = true) }
+        viewModelScope.launch {
+            val zip = withContext(Dispatchers.IO) { runCatching { bank.exportZip() }.getOrNull() }
+            _uiState.update { it.copy(exporting = false) }
+            if (zip != null) onReady(zip)
+        }
+    }
+
+    fun clearBank() {
+        viewModelScope.launch(Dispatchers.IO) {
+            bank.clear()
+            refreshBank()
+        }
+    }
 
     /** Crée ([id] = null) ou modifie un accordage personnalisé, puis le sélectionne. */
     fun saveCustomTuning(id: String?, name: String, notes: List<Note>) {
@@ -232,13 +272,17 @@ class TunerViewModel(
         if (frame == null) {
             resetStreak()
             _uiState.update {
-                it.copy(signal = false, level = 0f, note = null, frequency = null, cents = null, holding = false, activeString = -1, poly = null)
+                it.copy(
+                    signal = false, level = 0f, note = null, frequency = null, cents = null, holding = false,
+                    activeString = -1, poly = null, recording = false,
+                )
             }
             return
         }
+        val recording = settings.recordBank && engine.recorder.recording
         val level = ((frame.levelDb - LEVEL_FLOOR_DB) / LEVEL_RANGE_DB).toFloat().coerceIn(0f, 1f)
         if (settings.tunerMode == TunerMode.POLY) {
-            onPolyFrame(frame, level)
+            onPolyFrame(frame, level, recording)
             return
         }
         if (!frame.hasPitch) {
@@ -246,7 +290,7 @@ class TunerViewModel(
             _uiState.update {
                 it.copy(
                     signal = frame.signal, level = level, note = null, frequency = null, cents = null,
-                    holding = false, activeString = lockedString, poly = null,
+                    holding = false, activeString = lockedString, poly = null, recording = recording,
                 )
             }
             return
@@ -283,11 +327,12 @@ class TunerViewModel(
                 tunedStrings = tunedStrings,
                 tunedEvents = tunedEvents,
                 poly = null,
+                recording = recording,
             )
         }
     }
 
-    private fun onPolyFrame(frame: TunerFrame, level: Float) {
+    private fun onPolyFrame(frame: TunerFrame, level: Float, recording: Boolean) {
         val poly = frame.poly
         if (poly != null && poly.strings.size == settings.tuning.stringCount) {
             val tolerance = settings.toleranceCents
@@ -302,7 +347,7 @@ class TunerViewModel(
         _uiState.update {
             it.copy(
                 signal = frame.signal, level = level, note = null, frequency = null, cents = null,
-                holding = false, activeString = -1, tunedStrings = tunedStrings, poly = poly,
+                holding = false, activeString = -1, tunedStrings = tunedStrings, poly = poly, recording = recording,
             )
         }
     }
@@ -357,14 +402,25 @@ class TunerViewModel(
     }
 
     private fun pushTargets() {
+        val locked = if (settings.tunerMode == TunerMode.MONO) lockedString else -1
         engine.mode = settings.tunerMode
-        engine.targets = TunerTargets(
-            stringsHz = settings.tuning.frequencies(settings.a4),
-            lockedIndex = if (settings.tunerMode == TunerMode.MONO) lockedString else -1,
+        engine.targets = TunerTargets(stringsHz = settings.tuning.frequencies(settings.a4), lockedIndex = locked)
+        engine.recorder.context = RecordingContext(
+            mode = settings.tunerMode,
+            detection = settings.detectionMode.name,
+            lockedString = locked,
+            a4 = settings.a4,
+            tuningId = settings.tuning.id,
+            tuningName = settings.tuning.name,
+            tuningNotes = settings.tuning.strings.joinToString(" ") { ASCII_NOTES[it.pitchClass] + it.octave },
         )
+        engine.recorder.enabled = settings.recordBank
     }
 
     private companion object {
+        /** Noms de notes des fiches de la banque (lisibles par Note.parse). */
+        val ASCII_NOTES = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
         /** ~0,35 s à 23 analyses/s. */
         const val STREAK_FRAMES = 8
         const val TONE_ECHO_MS = 400L

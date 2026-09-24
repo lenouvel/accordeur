@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.blenouvel.accordeur.audio.MicSource
+import com.blenouvel.accordeur.audio.isAvailable
 import com.blenouvel.accordeur.audio.TunerMode
 import com.blenouvel.accordeur.model.CustomTuningCodec
 import com.blenouvel.accordeur.model.FretLabels
@@ -44,6 +45,8 @@ data class Settings(
     val keepScreenOn: Boolean = true,
     /** Source micro (AUTO : la moins traitée disponible). */
     val micSource: MicSource = MicSource.AUTO,
+    /** Banque de sons de test : garder le son brut de chaque note jouée (désactivable). */
+    val recordBank: Boolean = true,
     val tuningId: String = Presets.DEFAULT.id,
     val customTunings: List<Tuning> = emptyList(),
     /** Vue « Gammes » : fondamentale (classe de hauteur 0 = Do), gamme, cases, étiquettes, gaucher. */
@@ -98,6 +101,8 @@ class SettingsStore(context: Context) {
 
     suspend fun setMicSource(value: MicSource) = edit { it[MIC_SOURCE] = value.name }
 
+    suspend fun setRecordBank(value: Boolean) = edit { it[RECORD_BANK] = value }
+
     suspend fun selectTuning(id: String) = edit { it[TUNING_ID] = id }
 
     suspend fun setScaleRoot(pitchClass: Int) = edit { it[SCALE_ROOT] = pitchClass.mod(12) }
@@ -145,6 +150,7 @@ class SettingsStore(context: Context) {
             haptics = this[HAPTICS] ?: defaults.haptics,
             keepScreenOn = this[KEEP_SCREEN_ON] ?: defaults.keepScreenOn,
             micSource = enumOf(this[MIC_SOURCE], defaults.micSource).takeIf { it.isAvailable } ?: defaults.micSource,
+            recordBank = this[RECORD_BANK] ?: defaults.recordBank,
             tuningId = this[TUNING_ID] ?: defaults.tuningId,
             customTunings = CustomTuningCodec.decode(this[CUSTOM_TUNINGS]),
             scaleRoot = (this[SCALE_ROOT] ?: defaults.scaleRoot).mod(12),
@@ -170,6 +176,7 @@ class SettingsStore(context: Context) {
         val HAPTICS = booleanPreferencesKey("haptics")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val MIC_SOURCE = stringPreferencesKey("mic_source")
+        val RECORD_BANK = booleanPreferencesKey("record_bank")
         val TUNING_ID = stringPreferencesKey("tuning_id")
         val CUSTOM_TUNINGS = stringPreferencesKey("custom_tunings")
         val SCALE_ROOT = intPreferencesKey("scale_root")

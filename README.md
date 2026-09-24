@@ -5,8 +5,13 @@ sans NDK, avec une vue **Gammes** qui affiche gammes et modes sur un manche vert
 Spécification de l'accordeur : [`PLAN.md`](PLAN.md).
 
 - **Mono** : une corde à la fois, précision ~0,1 cent sur signal propre, lecture stable à ±0,5 cent.
-- **Poly** (type PolyTune) : on gratte toutes les cordes, chacune s'affiche trop basse / juste / trop haute.
-- Cordes **très graves** : détection fiable jusqu'à ~35 Hz (G♯1 = 51,91 Hz en Drop G♯).
+- **Poly** (type PolyTune) : on gratte toutes les cordes, chacune s'affiche trop basse / juste / trop
+  haute ; **l'affichage est maintenu** et une corde rejouée seule ne met à jour qu'elle.
+- Cordes **très graves** : détection fiable jusqu'à ~35 Hz (G♯1 = 51,91 Hz en Drop G♯), même
+  quand le micro du téléphone coupe la fondamentale (détection par la série de partiels).
+- **Source micro** réglable (UNPROCESSED, musique, reconnaissance vocale…) avec test en direct.
+- **Banque de sons de test** : chaque note jouée est gardée sans perte avec ce que l'accordeur a
+  affiché, exportable vers Proton Drive, et rejouable sur ordinateur (non-régression).
 - Notation **française** (Do Ré Mi), **anglaise** (C D E) ou **les deux**.
 - Accordages fournis : 6 cordes Standard, Drop D ; 7 cordes Standard, Drop A, Drop G♯
   (`G#D#G#C#F#A#D#`) ; plus Mi♭ / Ré / Do / Si standard, Drop C♯, Drop C, Drop B, Double Drop D,
@@ -56,7 +61,17 @@ Au premier lancement, autoriser le **micro**.
 ```
 
 Le traitement du signal est en Kotlin pur : il est testé sur la JVM avec des signaux synthétiques
-(sinusoïdes, cordes « raides » inharmoniques, bruit blanc, grattages complets désaccordés).
+(sinusoïdes, cordes « raides » inharmoniques captées par un micro de téléphone, bruits blanc, rose
+et grondement, grattages complets puis cordes rejouées seules) — 49 tests.
+
+`BankReplayTest` rejoue en plus la **banque de sons enregistrée sur le téléphone** (voir plus bas) :
+décompresser l'archive exportée à la racine du projet sous le nom `testbank/` (ou indiquer le
+dossier par la variable d'environnement `ACCORDEUR_BANQUE`), puis :
+
+```sh
+./gradlew test --tests '*BankReplayTest*'                          # rapport son par son
+ACCORDEUR_BANQUE_STRICT=1 ./gradlew test --tests '*BankReplayTest*' # échoue en cas de recul
+```
 
 ## Utilisation
 
@@ -64,6 +79,8 @@ Le traitement du signal est en Kotlin pur : il est testé sur la JVM avec des si
 |---|---|
 | Toucher le nom de l'accordage (en haut) | Choisir / créer / modifier un accordage |
 | **Mono / Poly** | Accord fin corde par corde / coup d'œil sur toutes les cordes |
+| Poly : gratter toutes les cordes | Met à jour toute la rangée ; les valeurs restent affichées après l'extinction du son |
+| Poly : jouer une corde seule | Ne met à jour qu'elle (vive) ; les autres gardent leur valeur (atténuées) |
 | Toucher une corde | Mode auto : la verrouiller (re-toucher pour libérer). Mode manuel : la choisir. Mode poly : passer en mono sur cette corde |
 | Appui long sur une corde | Son de référence (2,5 s, l'analyse est suspendue pendant la lecture) |
 | Puce **Auto / Manuel** | Auto : note la plus proche. Manuel : écart par rapport à la corde choisie |
@@ -72,7 +89,37 @@ La jauge passe au vert dans la tolérance (±5 cents par défaut, « Parfait » 
 corde restée juste ~0,35 s passe au vert dans la rangée (avec une légère vibration).
 
 La barre du bas bascule entre **Accordeur** et **Gammes** ; les réglages (⚙) sont accessibles
-depuis les deux. Le micro n'est actif que sur l'accordeur.
+depuis les deux. Le micro n'est actif que sur l'accordeur (et ses réglages).
+
+### Source du micro
+
+Réglages › *Source du micro*. **Automatique** prend la source la moins traitée : `UNPROCESSED`
+si le téléphone l'annonce, sinon `VOICE_PERFORMANCE` (chemin « musique en direct », Android 10+),
+puis `VOICE_RECOGNITION`, puis `MIC`. Les autres choix forcent une source ; la ligne « En service »
+indique celle réellement ouverte et le **test en direct** (niveau + note entendue) permet de
+comparer : jouer la grosse corde avec chaque source et garder celle qui la reconnaît le mieux.
+Réduction de bruit, gain automatique et annulation d'écho sont désactivés quand le téléphone les
+expose aux applications.
+
+### Banque de sons de test
+
+Réglages › *Banque de sons de test* (activée par défaut, désactivable). Pendant l'écoute, chaque
+note jouée est gardée **sur le téléphone** :
+
+- le **signal brut** du micro, tel que livré, avant tout filtrage : WAV mono **sans perte**
+  (float 32 bits, ou 16 bits si le téléphone ne fournit que du 16 bits) ;
+- seulement quand ça joue (gate ouvert), avec 1 s avant (le rejeu apprend le bruit de fond et voit
+  l'attaque entière) et 1 s après ; 2 min au plus par son ; **1 Go au plus** (les plus anciens
+  partent d'abord) ;
+- une **fiche texte** par son : téléphone, Android, version de l'app, source micro, réglages
+  (mode, détection, accordage, La, corde verrouillée) et, trame par trame (~43 ms), ce que
+  l'accordeur a affiché (niveau, son détecté, fréquence, valeur maintenue, tableau poly).
+
+L'écriture se fait sur un fil dédié (le fil audio ne fait que copier chaque bloc dans un tampon
+recyclé) ; une pastille rouge près de la barre de niveau signale un enregistrement en cours.
+**Exporter…** prépare une archive zip et ouvre le menu de partage d'Android : choisir
+**Proton Drive** (ou Drive, e-mail…). **Vider** efface la banque. Rien n'est jamais envoyé
+automatiquement.
 
 ## Gammes sur le manche
 
@@ -114,80 +161,111 @@ Gammes disponibles :
 ## Architecture
 
 ```
-Micro ─► AudioEngine ─► TunerProcessor ──────────────────────────────► TunerViewModel ─► UI Compose
-       (AudioRecord,    pré-filtrage ─► PitchDetector (MPM) ─► PitchStabilizer  (StateFlow)
-        thread audio)   (DC, 32 Hz–1,3 kHz)  PolyPitchDetector (mode poly)
+Micro ─► AudioEngine ─► TunerProcessor ───────────────────────────────────► TunerViewModel ─► UI Compose
+       (AudioRecord,    pré-filtrage ─► PitchDetector (MPM + série de        (StateFlow)
+        thread audio)   (DC, 32 Hz–1,3 kHz)  partiels) ─► PitchStabilizer
+            │                          PolyTracker (mode poly, tableau maintenu)
+            └─► SoundRecorder (banque de sons, fil d'écriture dédié)
 ```
 
 ```
 app/src/main/kotlin/com/blenouvel/accordeur/
 ├─ MainActivity.kt          navigation (Accordeur / Gammes / Réglages), permission micro, start/stop audio, écran allumé
-├─ TunerViewModel.kt        état UI (StateFlow), verrou de corde, cordes « au vert », son de référence
+├─ TunerViewModel.kt        état UI (StateFlow), verrou de corde, cordes « au vert », son de référence, banque de sons
 ├─ ScalesViewModel.kt       vue Gammes : réglages mémorisés, degrés mis en évidence, notes jouées
 ├─ audio/
-│  ├─ AudioEngine.kt        AudioRecord UNPROCESSED → VOICE_RECOGNITION → MIC, 48 kHz float (replis 44,1 kHz / 16 bits)
-│  ├─ TunerProcessor.kt     chaîne complète indépendante d'Android : filtres, tampon circulaire, analyses, poly
-│  ├─ PitchDetector.kt      MPM/NSDF par FFT + interpolation parabolique + raffinement par les partiels
-│  ├─ PitchStabilizer.kt    gate adaptatif, garde d'octave, médian 5, filtre 1€, maintien
-│  ├─ PolyPitchDetector.kt  FFT haute résolution par corde cible (mode poly)
+│  ├─ AudioEngine.kt        AudioRecord (source choisie ou auto), 48 kHz float (replis 44,1 kHz / 16 bits), effets coupés
+│  ├─ MicSource.kt          sources micro (auto, UNPROCESSED, VOICE_PERFORMANCE, VOICE_RECOGNITION, CAMCORDER, MIC)
+│  ├─ TunerProcessor.kt     chaîne complète indépendante d'Android : filtres, tampon circulaire, attaques, analyses
+│  ├─ PitchDetector.kt      MPM/NSDF par FFT + série de partiels d'une corde raide (candidats, ajustement f0/B)
+│  ├─ PitchStabilizer.kt    gate adaptatif, confirmation, garde d'octave, médian 5, filtre 1€, maintien
+│  ├─ PolyPitchDetector.kt  FFT haute résolution par corde cible (mesure et énergie de chaque corde)
+│  ├─ PolyTracker.kt        mode poly : grattage / corde seule, tableau maintenu, suivi pendant que ça sonne
+│  ├─ SoundRecorder.kt      banque de sons : pré-roll, WAV sans perte, fiche texte, plafond
 │  ├─ Fft.kt                FFT radix-2 complexe + FFT réelle (Kotlin pur)
 │  ├─ Biquad.kt             DC block, passe-haut 32 Hz, passe-bas 1,3 kHz (ordre 4)
 │  ├─ OneEuroFilter.kt      lissage adaptatif de l'aiguille
 │  └─ ReferenceTone.kt      son d'une note (synthèse additive en arrière-plan, AudioTrack)
 ├─ model/                   Note, GuitarString, Tuning, presets ; NoteMapper (fréq ↔ MIDI ↔ note ↔ cents, FR/EN)
 │                           Scales : catalogue des gammes, degrés, formule, orthographe, positions sur le manche
-├─ data/SettingsStore.kt    réglages (DataStore)
+├─ data/                    SettingsStore (DataStore), SoundBank (bilan, archive zip, suppression)
 └─ ui/                      TunerScreen, TunerMeter (jauge Canvas), StringSelector, PolyMeter, TuningSheet,
                             ScalesScreen, FretboardView (manche Canvas), ScalePickers (clavier, gammes),
-                            SettingsScreen, AppIcons, thème
+                            SettingsScreen, Share (partage de l'archive), AppIcons, thème
 ```
 
 ### Traitement du signal (mode mono)
 
-1. **Capture** : 48 kHz mono float, source `UNPROCESSED` (sans AGC ni anti-bruit) si l'appareil
-   la propose. Blocs de 2048 échantillons (hop ≈ 43 ms, ~23 analyses/s), tampons préalloués.
+1. **Capture** : 48 kHz mono float, source réglable (voir *Source du micro*). Blocs de 2048
+   échantillons (hop ≈ 43 ms, ~23 analyses/s), tampons préalloués.
 2. **Pré-filtrage continu** : suppression du continu, passe-haut 32 Hz (préserve G♯1),
    passe-bas 1,3 kHz d'ordre 4 (Butterworth, biquads RBJ en double).
-3. **Gate** : niveau > max(−85 dBFS, bruit ambiant + 10 dB), avec hystérésis ; le bruit de fond
-   est appris en continu. Pas d'analyse sur le silence.
-4. **MPM** (McLeod) sur 8192 échantillons (171 ms, ≥ 4 périodes à 51,9 Hz) : autocorrélation
-   **par FFT** (10 à 20× moins de calcul que le calcul direct), NSDF, premier maximum ≥ 0,9 × max,
-   interpolation parabolique, clarté.
-5. **Raffinement par les partiels** : les partiels sont mesurés dans le spectre (fenêtre de Hann,
-   estimateur exact à deux bins) et ajustés au modèle de corde raide f_h = h·f0·√(1 + B·h²).
-   Les cordes filées ont des partiels aigus trop hauts (inharmonicité) qui tirent le MPM de
-   plusieurs cents vers l'aigu ; l'ajustement rend la vraie fondamentale et reste valable quand
-   le micro du téléphone atténue la fondamentale.
-6. **Stabilisation** : clarté ≥ 0,9, garde d'octave (repli vers la corde verrouillée / une corde
-   de l'accordage, puis continuité pendant la note), médian sur 5 mesures, filtre 1€, maintien
-   1,2 s de la dernière valeur.
+3. **Gate** : niveau > max(−100 dBFS, bruit ambiant + 6 dB), avec hystérésis ; le bruit de fond
+   est pris sur la première trame puis suivi en continu. Sans traitement (UNPROCESSED),
+   94 dB SPL ≈ −36 dBFS : une guitare jouée doucement arrive vers −90 dBFS. Le bruit, lui, est
+   rejeté par l'analyse (pas de série de partiels).
+4. **MPM** (McLeod) sur 8192 échantillons (171 ms, ≥ 4 périodes à 51,9 Hz), autocorrélation
+   **par FFT** : première estimation de la période. Sur une corde filée captée par un téléphone
+   (fondamentale coupée, partiels aigus étirés par la raideur), le MPM suit l'écart entre partiels
+   et lit **20 à 50 cents trop haut** avec une clarté de 0,5 à 0,85 : c'est pour cela que la
+   grosse corde n'était jamais affichée (seuil de clarté 0,9). Il ne sert plus que de candidat.
+5. **Série de partiels** : pics du spectre de Hann (déduit du spectre zéro-paddé, estimateur exact
+   à deux bins) au-dessus du bruit local ; candidats f0 = MPM et ses sous-multiples, et chaque pic
+   fort divisé par h = 1…12. Pour chaque candidat, la série de partiels d'une **corde raide**
+   f_h = h·f0·√(1 + B·h²) est ancrée sur les partiels forts puis étendue vers l'aigu (ajustement
+   de f0 et B par moindres carrés). On retient la série qui explique le plus d'énergie du spectre ;
+   un candidat plus grave doit en expliquer nettement plus, avec une série assez complète (pas de
+   fausse sous-octave). La fréquence affichée est celle du **premier partiel** ajusté, même
+   inaudible.
+6. **Stabilisation** : deux mesures concordantes au début d'une note (les trames d'attaque sont
+   peu sûres), mesure isolée aberrante ignorée, garde d'octave (repli vers la corde verrouillée /
+   une corde de l'accordage, puis continuité pendant la note), médian sur 5 mesures, filtre 1€,
+   maintien 1,2 s de la dernière valeur.
 
 ### Précision mesurée hors appareil (tests et diagnostics JVM)
 
 | Cas | Résultat |
 |---|---|
-| Sinusoïdes 51,91 → 329,63 Hz + bruit blanc à −20 dB | erreur ≤ 0,2 cent |
-| G♯1 / A1 / B1 + bruit à −10 dB | bonne octave, ≤ 2 cents |
-| Cordes raides (B jusqu'à 6·10⁻⁴, fondamentale −20 dB) | MPM seul : jusqu'à +21 cents ; après raffinement : ≤ 0,1 cent |
+| Sinusoïdes 51,91 → 329,63 Hz + bruit blanc à −20 dB | erreur ≤ 0,5 cent |
+| Cordes filées (B = 1,5·10⁻⁴ à 8·10⁻⁴) via un micro « voix » (coupe-bas 120–200 Hz), guitare acoustique ou électrique non branchée | avant : 24 % (électrique) / 74 % (acoustique) des trames lues ; **après : 100 %**, bonne octave, écart moyen 0,01 cent |
+| Vrais échantillons de guitare (acier, nylon, électrique ; 10 notes de G♯1 à E4 ; 4 réponses de micro ; −50 à −75 dBFS) | avant : 91,2 % des trames lues ; **après : 96,9 %**, aucune note fausse |
 | Chaîne complète, 3 s de note, 5 accordages × toutes les cordes | écart max < 1 cent, dispersion < 0,5 cent |
-| Ronflement secteur 50/100/150 Hz à −20 dB sous G♯1 | erreur < 0,8 cent |
+| Bruits seuls (blanc, rose, grondement, clics, rafales, secteur 50 Hz) | aucune note affichée |
 | Mode poly, grattage 6 / 7 cordes désaccordé | ±3,5 cents (cordes à l'octave d'une autre : ±6 cents, marquées « ≈ ») |
-| Coût d'une analyse mono / poly (JVM desktop) | ~0,4 ms / ~0,6 ms |
+| Mode poly, corde rejouée seule (vrais échantillons, 72 scénarios) | jamais une autre corde mise à jour ; corde rejouée reconnue dans 65 cas (les autres : rejouée alors qu'elle sonnait encore au même niveau, elle reste suivie en direct) |
+| Coût d'une analyse mono / poly (JVM desktop) | ~0,5 ms / ~1 ms (budget : 43 ms par trame) |
 
-Première lecture : ~85 ms après l'attaque sur les cordes aiguës, ~0,2 s sur B1, ~0,4 s sur G♯1.
+Première lecture : ~0,2 s après l'attaque (deux mesures concordantes), ~0,3 s sur G♯1.
 
 ### Mode poly
 
-Après un grattage, fenêtre de 16384 échantillons (0,34 s) × Hann, zéro-padding ×2, FFT réelle.
-Pour chaque corde, on choisit parmi ses partiels 1 à 3 ceux qui ne sont pas recouverts par les
-partiels des autres cordes (accordage en quartes/quintes), on cherche le pic à ±½ ton (fenêtre
-rognée à mi-chemin des partiels voisins), puis on combine les mesures. Limites assumées :
+Fenêtre de 16384 échantillons (0,34 s) × Hann, zéro-padding ×2, FFT réelle, toutes les ~85 ms
+tant que ça sonne. Pour chaque corde, on choisit parmi ses partiels 1 à 3 ceux qui ne sont pas
+recouverts par les partiels des autres cordes (accordage en quartes/quintes), on cherche le pic à
+±½ ton (fenêtre rognée à mi-chemin des partiels voisins), puis on combine les mesures.
+
+Tableau **maintenu** (`PolyTracker`) :
+
+- **Attaques** : saut de niveau, clic du médiator (aigus > 2 kHz, audible même quand un accord
+  sonne) ou énergie d'une corde qui dépasse de 9 dB son maximum des 1–2 s précédentes.
+- **Classement**, 0,3 s après : une corde est « jouée » si elle est détectée avec au moins deux
+  partiels, si son énergie dépasse de 3 dB son maximum d'avant l'attaque (un battement ne dépasse
+  pas son propre maximum) et si elle n'est pas 20 dB sous la plus forte. Au moins 60 % des
+  cordes : **grattage**, toute la rangée est mise à jour. Sinon **corde seule** : le détecteur mono
+  nomme la note jouée (une résonance de caisse ou les partiels communs d'une autre corde ne le
+  trompent pas) et la mesure à ~1 cent ; les autres cordes gardent leur valeur.
+- Tant qu'elles sonnent, les cordes de la dernière attaque restent suivies (on peut tourner la
+  mécanique) ; rien ne s'efface ensuite. Valeurs de la dernière attaque vives, plus anciennes
+  atténuées.
+
+Limites assumées :
 
 - une corde à l'octave d'une autre (D2/D3 en Drop D, G♯1/G♯2 en Drop G♯) partage tous ses
-  partiels : mesure approximative, signalée par un anneau et « ≈ » ;
-- en standard, Si3 et Mi4 coïncident avec des harmoniques de Mi2/La2 : muettes, elles peuvent
-  rester « vues » ;
-- le poly sert au coup d'œil ; toucher une corde bascule en mono pour l'accord fin.
+  partiels : mesure approximative au grattage, signalée par un anneau et « ≈ » (jouée seule, elle
+  est mesurée par le détecteur mono, donc précisément) ;
+- une corde rejouée pendant qu'elle sonne encore au même niveau n'est pas une nouvelle attaque :
+  elle reste suivie en direct depuis le grattage ;
+- toucher une corde bascule en mono sur cette corde pour l'accord fin.
 
 ## Versions (septembre 2026)
 
@@ -213,21 +291,47 @@ Toutes les versions sont centralisées dans `gradle/libs.versions.toml`.
   pensée pour d'autres unités) : réglés sur les signaux de test ; β = 0,05 réduit le retard de
   l'aiguille sans ajouter de tremblement.
 - **Gate adaptatif** (bruit de fond appris) plutôt qu'un seuil fixe, pour la robustesse au bruit.
-- Bonus réalisés : son de référence, accordages supplémentaires.
+- **Série de partiels** plutôt que le seuil de clarté MPM pour valider une note : indispensable
+  pour les cordes graves captées par un téléphone (voir *Traitement du signal*).
+- Bonus réalisés : son de référence, accordages supplémentaires, vue Gammes, source micro
+  réglable, banque de sons de test.
+
+### Pourquoi une FFT maison ?
+
+Le plan demandait un traitement du signal **en Kotlin pur, sans NDK**, et le SDK Android n'a pas
+de FFT générale (le `Visualizer` d'`android.media.audiofx` ne voit que la sortie audio, en 8 bits
+et 1024 points). La FFT de `Fft.kt` fait ~130 lignes, n'alloue rien et est vérifiée contre une
+DFT directe dans les tests. Mesure sur la JVM (un seul cœur), tailles utilisées par l'accordeur :
+
+| FFT réelle | Maison | JTransforms 3.1 (référence Java) |
+|---|---|---|
+| 16384 points (mono) | 0,21 ms | 0,09 ms |
+| 32768 points (poly) | 0,50 ms | 0,17 ms |
+
+JTransforms est 2 à 3 fois plus rapide, mais l'analyse mono complète prend ~0,5 ms pour un budget
+de 43 ms par trame : le gain serait d'environ 0,1 ms par trame, imperceptible (et sans rapport avec
+la sensibilité, qui dépendait de l'algorithme de détection). Contreparties : trois dépendances
+(JTransforms, JLargeArrays qui s'appuie sur `sun.misc.Unsafe`, commons-math3), des fils de calcul
+à désactiver. Les FFT natives optimisées NEON (PFFFT, KissFFT, FFTW sous GPL) demandent le NDK.
+Le passage à JTransforms reste possible en quelques lignes si on le souhaite.
 
 ## Vérifications faites / restant à faire
 
 Faites dans l'environnement de développement (sans SDK Android, Google Maven y étant inaccessible) :
 
-- compilation et exécution des 36 tests JUnit (DSP, modèle, poly, gammes) ;
+- compilation et exécution des 49 tests JUnit (DSP, modèle, poly, banque de sons, gammes) ;
+- banc de mesure hors appareil : vrais échantillons de guitare (soundfonts FluidR3 et MusyngKite)
+  passés dans des modèles de micro de téléphone, cordes filées synthétiques, bruits, scénarios
+  poly (grattage puis corde rejouée) — chiffres ci-dessus ;
 - compilation de **tout** le code de l'app (UI Compose, ViewModel, AudioEngine, DataStore,
   MainActivity) contre Compose 1.12.1 / Material 3 1.4, le framework Android réel (API 37) et
-  des stubs pour activity / DataStore / lifecycle : aucune erreur, aucun avertissement ;
-- rendu des écrans Accordeur et Gammes (vrai code, Compose Desktop + Skia, à la taille d'un S25)
-  pour contrôle visuel de la mise en page.
+  des stubs pour activity / DataStore / lifecycle / core : aucune erreur, aucun avertissement ;
+- rendu des écrans Accordeur, Gammes et Réglages (vrai code, Compose Desktop + Skia, à la taille
+  d'un S25) pour contrôle visuel de la mise en page.
 
-À faire sur la machine de build / le téléphone (non exécuté ici) : synchronisation Gradle réelle
-avec AGP 9.3.3, `assembleDebug`, et la recette manuelle du plan (§12) : chaque corde de chaque
-preset, robustesse au bruit ambiant, cordes graves (Drop G♯, Drop A), bascule Mono/Poly,
-notation FR/EN, La de référence, accordage personnalisé, thèmes ; vue Gammes (sélecteurs,
-12 / 15 / 22 cases, notes jouées au toucher, gaucher).
+À faire sur le téléphone (non exécuté ici) : la recette manuelle du plan (§12) — chaque corde de
+chaque preset, robustesse au bruit ambiant, cordes graves (Drop G♯, Drop A), bascule Mono/Poly,
+notation FR/EN, La de référence, accordage personnalisé, thèmes ; vue Gammes ; **comparer les
+sources micro** avec le test en direct (grosse corde) ; mode poly (grattage, corde rejouée seule,
+affichage maintenu) ; banque de sons (pastille rouge, export vers Proton Drive, rejeu sur
+ordinateur avec `BankReplayTest`).

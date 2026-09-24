@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import androidx.core.content.pm.PackageInfoCompat
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -20,22 +21,15 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 import kotlin.math.max
 
 /** Causes d'échec de la capture. */
 enum class EngineError { PERMISSION, UNAVAILABLE, READ_FAILED }
 
-/**
- * Source micro. AUTO : la moins traitée disponible (UNPROCESSED si le téléphone l'annonce, puis
- * VOICE_PERFORMANCE — chemin « musique en direct » sans traitement ni couplage avec la sortie —,
- * puis VOICE_RECOGNITION, puis MIC). Les autres valeurs forcent une source, pour comparer.
- */
-enum class MicSource {
-    AUTO, UNPROCESSED, VOICE_PERFORMANCE, VOICE_RECOGNITION, CAMCORDER, MIC;
-
-    /** VOICE_PERFORMANCE n'existe qu'à partir d'Android 10. */
-    val isAvailable: Boolean get() = this != VOICE_PERFORMANCE || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-}
+/** VOICE_PERFORMANCE n'existe qu'à partir d'Android 10. */
+val MicSource.isAvailable: Boolean
+    get() = this != MicSource.VOICE_PERFORMANCE || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
 /** État du moteur audio. */
 sealed interface EngineState {
@@ -62,6 +56,23 @@ sealed interface EngineState {
  */
 class AudioEngine(context: Context) {
     private val appContext = context.applicationContext
+
+    /** Banque de sons de test : enregistre pendant l'écoute quand c'est activé. */
+    val recorder = SoundRecorder(File(appContext.filesDir, SoundRecorder.DIRECTORY))
+
+    private val appVersion: String by lazy {
+        try {
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                appContext.packageManager.getPackageInfo(appContext.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+            }
+            "${info.versionName} (${PackageInfoCompat.getLongVersionCode(info)})"
+        } catch (_: PackageManager.NameNotFoundException) {
+            "?"
+        }
+    }
 
     private val _frames = MutableStateFlow<TunerFrame?>(null)
     val frames: StateFlow<TunerFrame?> = _frames.asStateFlow()
@@ -166,6 +177,18 @@ class AudioEngine(context: Context) {
         this.processor = processor
         val samples = FloatArray(PitchDetector.HOP)
         val shorts = if (floatInput) null else ShortArray(PitchDetector.HOP)
+        recorder.start(
+            CaptureFormat(
+                sampleRate = sampleRate,
+                floatSamples = floatInput,
+                source = opened.source,
+                requestedSource = source,
+                unprocessedDeclared = opened.unprocessedDeclared,
+                device = "${Build.MANUFACTURER} ${Build.MODEL}",
+                android = "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+                appVersion = appVersion,
+            ),
+        )
         try {
             record.startRecording()
             if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
@@ -186,8 +209,10 @@ class AudioEngine(context: Context) {
                     _state.value = EngineState.Failed(EngineError.READ_FAILED)
                     break
                 }
-                processor.muted = SystemClock.elapsedRealtime() < muteUntil
+                val muted = SystemClock.elapsedRealtime() < muteUntil
+                processor.muted = muted
                 val frame = processor.process(samples, count)
+                recorder.offer(samples, count, frame, muted)
                 if (frame != null) _frames.value = frame
             }
         } catch (e: RuntimeException) {
@@ -200,6 +225,7 @@ class AudioEngine(context: Context) {
             }
             record.release()
             for (effect in effects) effect.release()
+            recorder.stop()
             this.processor = null
         }
     }

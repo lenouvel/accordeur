@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +48,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -344,12 +348,22 @@ private fun BottomHints(state: TunerUiState, onDetectionModeChange: (DetectionMo
     }
 }
 
-/** Niveau micro discret : « écoute… » + barre de niveau. */
+/** Niveau micro discret : « écoute… » + barre de niveau (+ pastille rouge si un son est enregistré). */
 @Composable
 private fun LevelIndicator(state: TunerUiState) {
     val level by animateFloatAsState(state.level, tween(120), label = "level")
     val colors = TunerTheme.colors
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.recording) {
+            val description = stringResource(R.string.cd_recording)
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error)
+                    .semantics { contentDescription = description },
+            )
+        }
         Text(
             text = if (state.signal) " " else stringResource(R.string.listening),
             style = MaterialTheme.typography.labelSmall,

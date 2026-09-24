@@ -54,6 +54,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.blenouvel.accordeur.audio.AudioEngine
 import com.blenouvel.accordeur.audio.ReferenceTone
 import com.blenouvel.accordeur.data.SettingsStore
+import com.blenouvel.accordeur.data.SoundBank
 import com.blenouvel.accordeur.data.ThemeMode
 import com.blenouvel.accordeur.ui.AppIcons
 import com.blenouvel.accordeur.ui.ScalesActions
@@ -74,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     settingsStore = SettingsStore(applicationContext),
                     engine = AudioEngine(applicationContext),
                     referenceTone = ReferenceTone(),
+                    bank = SoundBank(applicationContext),
                 )
             }
             val scalesViewModel: ScalesViewModel = viewModel {
@@ -156,6 +158,10 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                 setHaptics = viewModel::setHaptics,
                 setKeepScreenOn = viewModel::setKeepScreenOn,
                 setMicSource = viewModel::setMicSource,
+                setRecordBank = viewModel::setRecordBank,
+                refreshBank = viewModel::refreshBank,
+                exportBank = viewModel::exportBank,
+                clearBank = viewModel::clearBank,
             ),
             onBack = { screen = returnTo },
         )
