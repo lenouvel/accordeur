@@ -111,11 +111,12 @@ fun TunerScreen(
 
             Spacer(Modifier.weight(1f))
             if (poly) {
+                val held = state.poly != null
                 Text(
-                    text = stringResource(R.string.strum_all_strings),
-                    style = MaterialTheme.typography.titleMedium,
+                    text = stringResource(if (held) R.string.poly_held else R.string.strum_all_strings),
+                    style = if (held) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.alpha(if (state.poly == null) 1f else 0.5f),
+                    textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(16.dp))
                 PolyMeter(

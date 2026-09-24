@@ -27,7 +27,8 @@ import com.blenouvel.accordeur.ui.theme.TunerTheme
 /**
  * Mode poly : une colonne par corde (alignée sur la rangée de cordes), +50 cents en haut,
  * −50 en bas, bande verte = tolérance. Pastille pleine = mesure fiable, anneau = approximative
- * (partiels communs avec une autre corde), rien = corde non entendue.
+ * (partiels communs avec une autre corde), rien = corde non entendue. Les valeurs sont maintenues :
+ * celles de la dernière attaque sont vives, les plus anciennes atténuées.
  */
 @Composable
 fun PolyMeter(
@@ -60,7 +61,15 @@ private fun PolyColumn(state: PolyString?, toleranceCents: Int, modifier: Modifi
         animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessLow),
         label = "polyPosition",
     )
-    val alpha by animateFloatAsState(if (detected) 1f else 0f, tween(250), label = "polyAlpha")
+    val alpha by animateFloatAsState(
+        targetValue = when {
+            !detected -> 0f
+            state.fresh -> 1f
+            else -> HELD_ALPHA
+        },
+        animationSpec = tween(250),
+        label = "polyAlpha",
+    )
     val marker = centsColor(cents, toleranceCents)
     val reliable = state?.reliable ?: true
 
@@ -106,3 +115,6 @@ private fun PolyColumn(state: PolyString?, toleranceCents: Int, modifier: Modifi
         }
     }
 }
+
+/** Opacité d'une valeur maintenue d'une attaque précédente. */
+internal const val HELD_ALPHA = 0.5f

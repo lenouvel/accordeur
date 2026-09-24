@@ -6,6 +6,7 @@
     <string name="listening">Écoute…</string>
     <string name="play_a_string">Jouez une corde</string>
     <string name="strum_all_strings">Grattez toutes les cordes</string>
+    <string name="poly_held">Grattez pour tout remesurer, ou jouez une corde seule pour la mettre à jour</string>
     <string name="reference_pitch_short">%1$s %2$s Hz</string>
     <string name="frequency_hz">%1$s Hz</string>
     <string name="cents_value">%1$s ¢</string>
@@ -82,9 +83,26 @@
     <string name="settings_dynamic_color">Couleurs dynamiques (Material You)</string>
     <string name="settings_haptics">Vibrer quand une corde est juste</string>
     <string name="settings_keep_screen_on">Garder l\'écran allumé</string>
-    <string name="settings_about">Micro</string>
-    <string name="about_unprocessed">Signal brut (UNPROCESSED), %1$d Hz</string>
-    <string name="about_processed">Source standard (UNPROCESSED indisponible), %1$d Hz</string>
+    <string name="settings_mic_source">Source du micro</string>
+    <string name="settings_mic_source_desc">Le téléphone peut filtrer les graves selon la source. Si la grosse corde passe mal, essayez-en une autre et jouez-la : le test ci-dessous montre ce qui est entendu.</string>
+    <string name="mic_auto">Automatique</string>
+    <string name="mic_auto_desc">La source la moins traitée disponible</string>
+    <string name="mic_unprocessed">Brut (UNPROCESSED)</string>
+    <string name="mic_unprocessed_desc">Aucun traitement</string>
+    <string name="mic_unprocessed_undeclared">Non annoncé par ce téléphone : peut se comporter comme « Standard »</string>
+    <string name="mic_voice_performance">Musique (VOICE_PERFORMANCE)</string>
+    <string name="mic_voice_performance_desc">Chemin prévu pour la musique en direct</string>
+    <string name="mic_voice_recognition">Reconnaissance vocale</string>
+    <string name="mic_voice_recognition_desc">Pensée pour la voix : peut couper les graves</string>
+    <string name="mic_camcorder">Caméscope</string>
+    <string name="mic_camcorder_desc">Chemin vidéo du téléphone</string>
+    <string name="mic_standard">Standard (MIC)</string>
+    <string name="mic_standard_desc">Avec les traitements du téléphone (gain automatique…)</string>
+    <string name="mic_active">En service : %1$s · %2$d Hz</string>
+    <string name="mic_fallback">« %1$s » refusée par le téléphone</string>
+    <string name="mic_test_idle">Test : jouez une corde</string>
+    <string name="mic_test_listening">Test : son entendu, pas de note</string>
+    <string name="mic_test_note">Test : %1$s  %2$s ¢</string>
     <string name="about_idle">Micro inactif</string>
 
     <!-- Permission et erreurs -->

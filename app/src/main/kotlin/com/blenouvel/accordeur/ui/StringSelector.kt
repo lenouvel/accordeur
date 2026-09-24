@@ -80,6 +80,7 @@ fun StringSelector(
                 tuned = index in tunedStrings,
                 playing = index == playingString,
                 polyCents = poly?.getOrNull(index)?.takeIf { it.detected }?.cents,
+                polyFresh = poly?.getOrNull(index)?.fresh ?: false,
                 toleranceCents = toleranceCents,
                 onTap = { onTap(index) },
                 onLongPress = { onLongPress(index) },
@@ -101,6 +102,7 @@ private fun StringChip(
     tuned: Boolean,
     playing: Boolean,
     polyCents: Double?,
+    polyFresh: Boolean,
     toleranceCents: Int,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
@@ -229,7 +231,7 @@ private fun StringChip(
             Text(
                 text = formatCents(polyCents),
                 style = MaterialTheme.typography.labelSmall,
-                color = centsColor(polyCents, toleranceCents),
+                color = centsColor(polyCents, toleranceCents).copy(alpha = if (polyFresh) 1f else HELD_ALPHA),
                 maxLines = 1,
                 modifier = Modifier.padding(top = 2.dp),
             )

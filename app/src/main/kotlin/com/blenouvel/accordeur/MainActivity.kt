@@ -155,6 +155,7 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                 setDynamicColor = viewModel::setDynamicColor,
                 setHaptics = viewModel::setHaptics,
                 setKeepScreenOn = viewModel::setKeepScreenOn,
+                setMicSource = viewModel::setMicSource,
             ),
             onBack = { screen = returnTo },
         )

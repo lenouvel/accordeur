@@ -1,6 +1,10 @@
 package com.blenouvel.accordeur.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -9,7 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,6 +26,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -34,11 +43,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.blenouvel.accordeur.R
 import com.blenouvel.accordeur.TunerUiState
 import com.blenouvel.accordeur.audio.EngineState
+import com.blenouvel.accordeur.audio.MicSource
 import com.blenouvel.accordeur.audio.TunerMode
 import com.blenouvel.accordeur.data.DetectionMode
 import com.blenouvel.accordeur.data.Settings
@@ -47,6 +59,7 @@ import com.blenouvel.accordeur.model.Notation
 import com.blenouvel.accordeur.model.NoteMapper
 import com.blenouvel.accordeur.model.NoteNames
 import com.blenouvel.accordeur.ui.theme.NumericStyle
+import com.blenouvel.accordeur.ui.theme.TunerTheme
 import com.blenouvel.accordeur.ui.theme.dynamicColorAvailable
 import kotlin.math.roundToInt
 
@@ -61,6 +74,7 @@ class SettingsActions(
     val setDynamicColor: (Boolean) -> Unit,
     val setHaptics: (Boolean) -> Unit,
     val setKeepScreenOn: (Boolean) -> Unit,
+    val setMicSource: (MicSource) -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -154,23 +168,112 @@ fun SettingsScreen(
             SwitchRow(stringResource(R.string.settings_keep_screen_on), settings.keepScreenOn, actions.setKeepScreenOn)
             HorizontalDivider()
 
-            Setting(stringResource(R.string.settings_about)) {
-                Text(
-                    text = when (val engine = state.engineState) {
-                        is EngineState.Running -> stringResource(
-                            if (engine.unprocessed) R.string.about_unprocessed else R.string.about_processed,
-                            engine.sampleRate,
-                        )
-                        else -> stringResource(R.string.about_idle)
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            MicSourceSetting(state, actions.setMicSource)
             Spacer(Modifier.height(24.dp))
         }
     }
 }
+
+/**
+ * Choix de la source micro, avec la source réellement en service et un test en direct (niveau,
+ * note entendue) pour comparer les sources en jouant la grosse corde.
+ */
+@Composable
+private fun MicSourceSetting(state: TunerUiState, onSelect: (MicSource) -> Unit) {
+    val running = state.engineState as? EngineState.Running
+    val selected = state.settings.micSource
+    Setting(stringResource(R.string.settings_mic_source), stringResource(R.string.settings_mic_source_desc)) {
+        Column(Modifier.selectableGroup()) {
+            for (source in MicSource.entries.filter { it.isAvailable }) {
+                val description = if (source == MicSource.UNPROCESSED && running != null && !running.unprocessedDeclared) {
+                    stringResource(R.string.mic_unprocessed_undeclared)
+                } else {
+                    micSourceDescription(source)
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectable(selected = source == selected, onClick = { onSelect(source) }, role = Role.RadioButton)
+                        .padding(vertical = 6.dp),
+                ) {
+                    RadioButton(selected = source == selected, onClick = null)
+                    Column(Modifier.padding(start = 12.dp)) {
+                        Text(micSourceLabel(source), style = MaterialTheme.typography.bodyLarge)
+                        Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        val status = when {
+            running == null -> stringResource(R.string.about_idle)
+            selected != MicSource.AUTO && running.source != selected -> stringResource(R.string.mic_fallback, micSourceLabel(selected)) +
+                " · " + stringResource(R.string.mic_active, micSourceLabel(running.source), running.sampleRate)
+            else -> stringResource(R.string.mic_active, micSourceLabel(running.source), running.sampleRate)
+        }
+        Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        MicTest(state)
+    }
+}
+
+/** Test en direct : barre de niveau et note entendue (mode mono). */
+@Composable
+private fun MicTest(state: TunerUiState) {
+    val level by animateFloatAsState(state.level, tween(120), label = "testLevel")
+    val colors = TunerTheme.colors
+    val note = state.note
+    val cents = state.cents
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier
+                .width(96.dp)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(colors.track),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(level)
+                    .height(6.dp)
+                    .background(if (state.signal) MaterialTheme.colorScheme.primary else colors.tick),
+            )
+        }
+        Text(
+            text = when {
+                note != null && cents != null && !state.holding ->
+                    stringResource(R.string.mic_test_note, NoteNames.label(note, state.settings.notation), formatCents(cents))
+                state.signal -> stringResource(R.string.mic_test_listening)
+                else -> stringResource(R.string.mic_test_idle)
+            },
+            style = MaterialTheme.typography.bodyMedium.merge(NumericStyle),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun micSourceLabel(source: MicSource): String = stringResource(
+    when (source) {
+        MicSource.AUTO -> R.string.mic_auto
+        MicSource.UNPROCESSED -> R.string.mic_unprocessed
+        MicSource.VOICE_PERFORMANCE -> R.string.mic_voice_performance
+        MicSource.VOICE_RECOGNITION -> R.string.mic_voice_recognition
+        MicSource.CAMCORDER -> R.string.mic_camcorder
+        MicSource.MIC -> R.string.mic_standard
+    },
+)
+
+@Composable
+private fun micSourceDescription(source: MicSource): String = stringResource(
+    when (source) {
+        MicSource.AUTO -> R.string.mic_auto_desc
+        MicSource.UNPROCESSED -> R.string.mic_unprocessed_desc
+        MicSource.VOICE_PERFORMANCE -> R.string.mic_voice_performance_desc
+        MicSource.VOICE_RECOGNITION -> R.string.mic_voice_recognition_desc
+        MicSource.CAMCORDER -> R.string.mic_camcorder_desc
+        MicSource.MIC -> R.string.mic_standard_desc
+    },
+)
 
 @Composable
 private fun ReferencePitch(settings: Settings, onChange: (Double) -> Unit) {

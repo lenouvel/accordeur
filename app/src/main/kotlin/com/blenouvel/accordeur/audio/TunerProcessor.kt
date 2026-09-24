@@ -2,7 +2,10 @@ package com.blenouvel.accordeur.audio
 
 import kotlin.math.log10
 
-/** Mode d'accordage : une corde à la fois (précis) ou toutes après un grattage (coup d'œil). */
+/**
+ * Mode d'accordage : une corde à la fois (précis) ou toutes après un grattage (coup d'œil,
+ * tableau maintenu : une corde rejouée seule ne met à jour qu'elle).
+ */
 enum class TunerMode { MONO, POLY }
 
 /**
@@ -31,7 +34,7 @@ data class TunerFrame(
     val clarity: Double,
     /** Valeur maintenue après disparition du signal (à afficher atténuée). */
     val holding: Boolean,
-    /** Mesures par corde en mode poly, sinon null. */
+    /** Tableau des cordes en mode poly (maintenu entre les attaques), sinon null. */
     val poly: PolyReading?,
 ) {
     val hasPitch: Boolean get() = !frequency.isNaN()
@@ -40,7 +43,7 @@ data class TunerFrame(
 /**
  * Chaîne de traitement complète, indépendante d'Android (testable sur JVM) :
  * pré-filtrage continu → tampon circulaire → toutes les [PitchDetector.HOP] trames, analyse de la
- * dernière fenêtre (MPM en mono, spectre haute résolution en poly) → stabilisation.
+ * dernière fenêtre (série de partiels en mono, [PolyTracker] en poly) → stabilisation.
  *
  * [process] est appelé par le thread audio ; les champs de configuration peuvent être modifiés
  * depuis un autre thread. Tampons préalloués : pas d'allocation dans la boucle échantillon.
@@ -57,6 +60,15 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
     var muted: Boolean = false
 
     private val preprocessor = Preprocessor(sampleRate)
+
+    /** Aigus du signal brut (> 2 kHz) : le clic du médiator, même pendant qu'un accord sonne. */
+    private val attackFilter = Biquad.highPass(sampleRate, ATTACK_BAND_HZ)
+    private var attackEnergy = 0.0
+    private val attackLevels = DoubleArray(ATTACK_HISTORY)
+    private val attackSorted = DoubleArray(ATTACK_HISTORY)
+    private var attackCount = 0
+    private var attackNext = 0
+    private var lastAttackTime = Double.NEGATIVE_INFINITY
     private val ring = DoubleArray(RING_SIZE)
     private var written = 0L
     private val window = DoubleArray(PitchDetector.WINDOW)
@@ -64,29 +76,32 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
     private val detector = PitchDetector(sampleRate)
     private val estimate = PitchEstimate()
     private val stabilizer = PitchStabilizer()
-    private val polyDetector = PolyPitchDetector(sampleRate)
+    private val polyTracker = PolyTracker(sampleRate)
 
     private var hopFill = 0
     private var hopEnergy = 0.0
     private var hopIndex = 0L
 
-    private var polyReading: PolyReading? = null
-    private var polyOnset = -1
+    private var polyActive = false
+    private var polyOnsets = 0
     private var lastPolyHop = Long.MIN_VALUE / 2
-    private var lastSignalTime = Double.NEGATIVE_INFINITY
 
     /** Traite [count] échantillons ; renvoie le dernier instantané produit, ou null. */
     fun process(input: FloatArray, count: Int = input.size): TunerFrame? {
         var frame: TunerFrame? = null
         for (i in 0 until count) {
-            val y = preprocessor.process(input[i].toDouble())
+            val x = input[i].toDouble()
+            val a = attackFilter.process(x)
+            attackEnergy += a * a
+            val y = preprocessor.process(x)
             ring[(written and RING_MASK).toInt()] = y
             written++
             hopEnergy += y * y
             if (++hopFill == PitchDetector.HOP) {
-                frame = analyze(hopEnergy / hopFill)
+                frame = analyze(hopEnergy / hopFill, attackEnergy / hopFill)
                 hopFill = 0
                 hopEnergy = 0.0
+                attackEnergy = 0.0
             }
         }
         return frame
@@ -95,19 +110,23 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
     /** Remet la chaîne à zéro (à la reprise de l'écoute). */
     fun reset() {
         preprocessor.reset()
+        attackFilter.reset()
+        attackEnergy = 0.0
+        attackCount = 0
+        attackNext = 0
+        lastAttackTime = Double.NEGATIVE_INFINITY
         java.util.Arrays.fill(ring, 0.0)
         written = 0
         hopFill = 0
         hopEnergy = 0.0
         hopIndex = 0
         stabilizer.reset()
-        polyReading = null
-        polyOnset = -1
+        polyTracker.reset()
+        polyActive = false
         lastPolyHop = Long.MIN_VALUE / 2
-        lastSignalTime = Double.NEGATIVE_INFINITY
     }
 
-    private fun analyze(hopMeanSquare: Double): TunerFrame {
+    private fun analyze(hopMeanSquare: Double, attackMeanSquare: Double): TunerFrame {
         hopIndex++
         val time = written.toDouble() / sampleRate
         copyLatest(window)
@@ -120,9 +139,11 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
         }
 
         stabilizer.updateLevel(levelDb, toDb(hopMeanSquare), time)
+        val attack = attackOnset(toDb(attackMeanSquare), time)
         val currentTargets = targets
         val poly: PolyReading?
         if (mode == TunerMode.MONO) {
+            polyActive = false
             // Court-circuit sur silence : pas de détection tant que le gate est fermé.
             val found = stabilizer.gateOpen && detector.detect(window, estimate)
             stabilizer.updatePitch(
@@ -134,7 +155,7 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
             poly = null
         } else {
             stabilizer.updatePitch(null, time, 0.0, currentTargets.stringsHz)
-            poly = updatePoly(time, currentTargets.stringsHz)
+            poly = updatePoly(time, currentTargets.stringsHz, attack)
         }
         return TunerFrame(
             timeSeconds = time,
@@ -149,47 +170,50 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
     }
 
     /**
-     * Mode poly : après un grattage (attaque), on attend que la fenêtre longue soit remplie par la
-     * nouvelle note, puis on analyse toutes les [POLY_EVERY_HOPS] trames tant que ça sonne.
-     * Les mesures successives d'un même grattage sont moyennées (affichage plus calme).
+     * Mode poly : les attaques signalées par le gate et une analyse spectrale longue toutes les
+     * [POLY_EVERY_HOPS] trames (tant que ça sonne) alimentent le [PolyTracker], qui tient le tableau.
      */
-    private fun updatePoly(time: Double, strings: DoubleArray): PolyReading? {
-        if (stabilizer.gateOpen) lastSignalTime = time
+    private fun updatePoly(time: Double, strings: DoubleArray, attack: Boolean): PolyReading? {
         if (strings.isEmpty()) return null
-        val sinceOnset = time - stabilizer.lastOnsetTime
-        val due = hopIndex - lastPolyHop >= POLY_EVERY_HOPS
-        if (stabilizer.gateOpen && sinceOnset >= POLY_DELAY_S && due) {
+        polyTracker.setTargets(strings)
+        if (!polyActive) {
+            // Entrée en mode poly : les attaques comptées en mono ne concernent pas le tableau.
+            polyActive = true
+            polyOnsets = stabilizer.onsetCount
+        }
+        if (stabilizer.onsetCount != polyOnsets) {
+            polyOnsets = stabilizer.onsetCount
+            polyTracker.onset(stabilizer.lastOnsetTime)
+        } else if (attack && stabilizer.gateOpen) {
+            polyTracker.onset(time)
+        }
+        if (!stabilizer.gateOpen) {
+            polyTracker.silence()
+        } else if (hopIndex - lastPolyHop >= POLY_EVERY_HOPS) {
             lastPolyHop = hopIndex
             copyLatest(polyWindow)
-            val fresh = polyDetector.analyze(polyWindow, strings, time)
-            val previous = polyReading
-            if (fresh.strings.any { it.detected }) {
-                polyReading = if (previous != null && polyOnset == stabilizer.onsetCount &&
-                    previous.strings.size == fresh.strings.size
-                ) {
-                    blend(previous, fresh)
-                } else {
-                    fresh
-                }
-                polyOnset = stabilizer.onsetCount
-            }
-        } else if (time - lastSignalTime > POLY_HOLD_S) {
-            polyReading = null
+            polyTracker.analyze(polyWindow, window, time)
         }
-        val reading = polyReading
-        return if (reading != null && reading.strings.size == strings.size) reading else null
+        return polyTracker.reading(time)
     }
 
-    private fun blend(previous: PolyReading, fresh: PolyReading): PolyReading {
-        val strings = fresh.strings.mapIndexed { i, now ->
-            val before = previous.strings[i]
-            when {
-                now.detected && before.detected -> now.copy(cents = 0.5 * (now.cents + before.cents))
-                now.detected -> now
-                else -> before
-            }
+    /**
+     * Clic d'attaque : l'énergie des aigus du dernier bloc dépasse de [ATTACK_JUMP_DB] la médiane
+     * des ~0,5 s précédentes (les aigus d'une corde qui sonne s'éteignent vite, pas le clic).
+     */
+    private fun attackOnset(levelDb: Double, time: Double): Boolean {
+        var median = Double.NaN
+        if (attackCount >= ATTACK_HISTORY / 2) {
+            for (i in 0 until attackCount) attackSorted[i] = attackLevels[i]
+            java.util.Arrays.sort(attackSorted, 0, attackCount)
+            median = attackSorted[attackCount / 2]
         }
-        return PolyReading(strings, fresh.timeSeconds)
+        attackLevels[attackNext] = levelDb
+        attackNext = (attackNext + 1) % ATTACK_HISTORY
+        if (attackCount < ATTACK_HISTORY) attackCount++
+        if (median.isNaN() || levelDb < median + ATTACK_JUMP_DB || time - lastAttackTime < ATTACK_REFRACTORY_S) return false
+        lastAttackTime = time
+        return true
     }
 
     private fun copyLatest(destination: DoubleArray) {
@@ -207,8 +231,10 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
     companion object {
         private const val RING_SIZE = 32768
         private const val RING_MASK = (RING_SIZE - 1).toLong()
-        private const val POLY_EVERY_HOPS = 4
-        private const val POLY_DELAY_S = 0.25
-        private const val POLY_HOLD_S = 4.0
+        private const val POLY_EVERY_HOPS = 2
+        private const val ATTACK_BAND_HZ = 2000.0
+        private const val ATTACK_HISTORY = 12
+        private const val ATTACK_JUMP_DB = 6.0
+        private const val ATTACK_REFRACTORY_S = 0.25
     }
 }

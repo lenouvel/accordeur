@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.blenouvel.accordeur.audio.AudioEngine
 import com.blenouvel.accordeur.audio.EngineState
+import com.blenouvel.accordeur.audio.MicSource
 import com.blenouvel.accordeur.audio.PolyReading
 import com.blenouvel.accordeur.audio.ReferenceTone
 import com.blenouvel.accordeur.audio.TunerFrame
@@ -20,6 +21,7 @@ import com.blenouvel.accordeur.model.Note
 import com.blenouvel.accordeur.model.NoteMapper
 import com.blenouvel.accordeur.model.Presets
 import com.blenouvel.accordeur.model.Tuning
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,6 +82,9 @@ class TunerViewModel(
     private var inTuneStreak = 0
     private var outOfTuneStreak = 0
     private var toneJob: Job? = null
+
+    /** Changer de source relance la capture (arrêt ≤ 43 ms) : hors du fil principal, dans l'ordre. */
+    private val engineDispatcher = Dispatchers.Default.limitedParallelism(1)
 
     init {
         viewModelScope.launch { settingsStore.settings.collect { onSettings(it) } }
@@ -170,6 +175,7 @@ class TunerViewModel(
     fun setDynamicColor(value: Boolean) = launchSetting { settingsStore.setDynamicColor(value) }
     fun setHaptics(value: Boolean) = launchSetting { settingsStore.setHaptics(value) }
     fun setKeepScreenOn(value: Boolean) = launchSetting { settingsStore.setKeepScreenOn(value) }
+    fun setMicSource(value: MicSource) = launchSetting { settingsStore.setMicSource(value) }
 
     /** Crée ([id] = null) ou modifie un accordage personnalisé, puis le sélectionne. */
     fun saveCustomTuning(id: String?, name: String, notes: List<Note>) {
@@ -208,6 +214,9 @@ class TunerViewModel(
         if (lockedString >= new.tuning.stringCount) lockedString = -1
         settingsLoaded = true
         pushTargets()
+        if (engine.source != new.micSource) {
+            viewModelScope.launch(engineDispatcher) { engine.source = new.micSource }
+        }
         _uiState.update {
             it.copy(
                 settings = new,

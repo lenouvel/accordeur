@@ -8,6 +8,11 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AudioEffect
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
@@ -20,16 +25,32 @@ import kotlin.math.max
 /** Causes d'échec de la capture. */
 enum class EngineError { PERMISSION, UNAVAILABLE, READ_FAILED }
 
+/**
+ * Source micro. AUTO : la moins traitée disponible (UNPROCESSED si le téléphone l'annonce, puis
+ * VOICE_PERFORMANCE — chemin « musique en direct » sans traitement ni couplage avec la sortie —,
+ * puis VOICE_RECOGNITION, puis MIC). Les autres valeurs forcent une source, pour comparer.
+ */
+enum class MicSource {
+    AUTO, UNPROCESSED, VOICE_PERFORMANCE, VOICE_RECOGNITION, CAMCORDER, MIC;
+
+    /** VOICE_PERFORMANCE n'existe qu'à partir d'Android 10. */
+    val isAvailable: Boolean get() = this != VOICE_PERFORMANCE || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+}
+
 /** État du moteur audio. */
 sealed interface EngineState {
     data object Idle : EngineState
-    data class Running(val sampleRate: Int, val unprocessed: Boolean) : EngineState
+
+    /** [source] : source réellement ouverte ; [unprocessedDeclared] : UNPROCESSED annoncé par le téléphone. */
+    data class Running(val sampleRate: Int, val source: MicSource, val unprocessedDeclared: Boolean) : EngineState
+
     data class Failed(val error: EngineError) : EngineState
 }
 
 /**
- * Capture micro temps réel : un seul [AudioRecord] (source UNPROCESSED si l'appareil la
- * propose, sinon VOICE_RECOGNITION — moins traitée que MIC), 48 kHz mono en PCM float.
+ * Capture micro temps réel : un seul [AudioRecord] (source choisie par [source], voir
+ * [MicSource]), 48 kHz mono en PCM float. Les traitements du téléphone accessibles aux
+ * applications (réduction de bruit, gain automatique, annulation d'écho) sont désactivés.
  *
  * Un thread dédié (priorité audio) lit des blocs de [PitchDetector.HOP] échantillons et les
  * passe au [TunerProcessor] ; l'analyse (~0,5 ms) tient largement dans les 43 ms d'un bloc et le
@@ -60,6 +81,15 @@ class AudioEngine(context: Context) {
         set(value) {
             field = value
             processor?.targets = value
+        }
+
+    /** Source demandée ; la changer relance la capture si elle tourne. */
+    @Volatile
+    var source: MicSource = MicSource.AUTO
+        set(value) {
+            if (field == value) return
+            field = value
+            restartIfRunning()
         }
 
     @Volatile
@@ -110,15 +140,23 @@ class AudioEngine(context: Context) {
         if (_state.value is EngineState.Running) _state.value = EngineState.Idle
     }
 
+    @Synchronized
+    private fun restartIfRunning() {
+        if (thread?.isAlive != true) return
+        stop()
+        start()
+    }
+
     private fun captureLoop() {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-        val opened = openRecord()
+        val opened = openRecord(source)
         if (opened == null) {
             _state.value = EngineState.Failed(EngineError.UNAVAILABLE)
             running = false
             return
         }
-        val (record, unprocessed) = opened
+        val record = opened.record
+        val effects = disableEffects(record.audioSessionId)
         val sampleRate = record.sampleRate
         val floatInput = record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT
         val processor = TunerProcessor(sampleRate).also {
@@ -134,7 +172,7 @@ class AudioEngine(context: Context) {
                 _state.value = EngineState.Failed(EngineError.UNAVAILABLE)
                 return
             }
-            _state.value = EngineState.Running(sampleRate, unprocessed)
+            _state.value = EngineState.Running(sampleRate, opened.source, opened.unprocessedDeclared)
             while (running) {
                 val count = if (shorts == null) {
                     record.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
@@ -161,22 +199,29 @@ class AudioEngine(context: Context) {
             } catch (_: IllegalStateException) {
             }
             record.release()
+            for (effect in effects) effect.release()
             this.processor = null
         }
     }
 
-    /** Ouvre le micro : UNPROCESSED → VOICE_RECOGNITION → MIC ; 48 kHz puis 44,1 kHz ; float puis 16 bits. */
+    private class Opened(val record: AudioRecord, val source: MicSource, val unprocessedDeclared: Boolean)
+
+    /**
+     * Ouvre le micro : source demandée, puis l'ordre automatique (UNPROCESSED s'il est annoncé,
+     * VOICE_PERFORMANCE, VOICE_RECOGNITION, MIC) ; 48 kHz puis 44,1 kHz ; float puis 16 bits.
+     */
     @SuppressLint("MissingPermission") // permission vérifiée dans start()
-    private fun openRecord(): Pair<AudioRecord, Boolean>? {
+    private fun openRecord(requested: MicSource): Opened? {
         val audioManager = appContext.getSystemService(AudioManager::class.java)
-        val unprocessedSupported =
-            audioManager?.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true"
-        val sources = buildList {
-            if (unprocessedSupported) add(MediaRecorder.AudioSource.UNPROCESSED)
-            add(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-            add(MediaRecorder.AudioSource.MIC)
-        }
-        for (source in sources) {
+        val declared = audioManager?.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true"
+        val order = buildList {
+            if (requested != MicSource.AUTO) add(requested)
+            if (declared) add(MicSource.UNPROCESSED)
+            add(MicSource.VOICE_PERFORMANCE)
+            add(MicSource.VOICE_RECOGNITION)
+            add(MicSource.MIC)
+        }.distinct().filter { it.isAvailable }
+        for (source in order) {
             for (rate in SAMPLE_RATES) {
                 for (encoding in ENCODINGS) {
                     val minBuffer = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, encoding)
@@ -184,7 +229,7 @@ class AudioEngine(context: Context) {
                     val bytesPerSample = if (encoding == AudioFormat.ENCODING_PCM_FLOAT) 4 else 2
                     val record = try {
                         AudioRecord.Builder()
-                            .setAudioSource(source)
+                            .setAudioSource(source.androidSource())
                             .setAudioFormat(
                                 AudioFormat.Builder()
                                     .setEncoding(encoding)
@@ -199,13 +244,40 @@ class AudioEngine(context: Context) {
                         null
                     }
                     if (record != null && record.state == AudioRecord.STATE_INITIALIZED) {
-                        return record to (source == MediaRecorder.AudioSource.UNPROCESSED)
+                        return Opened(record, source, declared)
                     }
                     record?.release()
                 }
             }
         }
         return null
+    }
+
+    /** Désactive les traitements du téléphone attachés à la capture, quand ils sont accessibles. */
+    private fun disableEffects(sessionId: Int): List<AudioEffect> {
+        val effects = ArrayList<AudioEffect>()
+        fun disable(create: () -> AudioEffect?) {
+            try {
+                val effect = create() ?: return
+                effect.setEnabled(false)
+                effects += effect
+            } catch (e: RuntimeException) {
+                Log.i(TAG, "Traitement non désactivable", e)
+            }
+        }
+        if (NoiseSuppressor.isAvailable()) disable { NoiseSuppressor.create(sessionId) }
+        if (AutomaticGainControl.isAvailable()) disable { AutomaticGainControl.create(sessionId) }
+        if (AcousticEchoCanceler.isAvailable()) disable { AcousticEchoCanceler.create(sessionId) }
+        return effects
+    }
+
+    @SuppressLint("InlinedApi") // VOICE_PERFORMANCE filtré par MicSource.isAvailable (Android 10+)
+    private fun MicSource.androidSource(): Int = when (this) {
+        MicSource.UNPROCESSED -> MediaRecorder.AudioSource.UNPROCESSED
+        MicSource.VOICE_PERFORMANCE -> MediaRecorder.AudioSource.VOICE_PERFORMANCE
+        MicSource.VOICE_RECOGNITION -> MediaRecorder.AudioSource.VOICE_RECOGNITION
+        MicSource.CAMCORDER -> MediaRecorder.AudioSource.CAMCORDER
+        MicSource.MIC, MicSource.AUTO -> MediaRecorder.AudioSource.MIC
     }
 
     private companion object {

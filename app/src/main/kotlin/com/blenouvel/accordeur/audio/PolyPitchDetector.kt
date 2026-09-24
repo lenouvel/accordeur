@@ -18,10 +18,20 @@ data class PolyString(
     val cents: Double,
     /** Faux si la mesure repose sur un partiel partagé avec une autre corde (moins fiable). */
     val reliable: Boolean,
+    /** Mise à jour par la dernière attaque (grattage ou corde jouée seule). */
+    val fresh: Boolean = false,
 )
 
-/** Résultat d'une analyse polyphonique : une entrée par corde (grave → aiguë). */
-data class PolyReading(val strings: List<PolyString>, val timeSeconds: Double)
+/**
+ * Résultat polyphonique : une entrée par corde (grave → aiguë). [event] compte les attaques
+ * prises en compte ; [strum] : la dernière était un grattage (sinon une ou deux cordes seules).
+ */
+data class PolyReading(
+    val strings: List<PolyString>,
+    val timeSeconds: Double,
+    val event: Int = 0,
+    val strum: Boolean = false,
+)
 
 /**
  * Estimation multi-hauteurs **contrainte** (type PolyTune) : on connaît les fréquences cibles
@@ -62,8 +72,19 @@ class PolyPitchDetector(
     private var peakFrequency = 0.0
     private var peakMagnitude = 0.0
 
+    /** Énergie de chaque corde à la dernière analyse (partiels retenus, détectée ou non). */
+    val energies = DoubleArray(MAX_STRINGS)
+
+    /** La corde a au moins un partiel propre (non partagé avec une autre corde). */
+    val clean = BooleanArray(MAX_STRINGS)
+
+    /** Partiels mesurables (h ≤ 3, dans la bande) et partiels effectivement trouvés, par corde. */
+    val partialsExpected = IntArray(MAX_STRINGS)
+    val partialsFound = IntArray(MAX_STRINGS)
+
     /**
      * Analyse [window] ([windowSize] échantillons filtrés) pour les cordes [targetsHz].
+     * Remplit aussi [energies] et [clean] pour chaque corde.
      */
     fun analyze(window: DoubleArray, targetsHz: DoubleArray, timeSeconds: Double): PolyReading {
         for (i in 0 until windowSize) buffer[i] = window[i] * hann[i]
@@ -90,7 +111,9 @@ class PolyPitchDetector(
         var weightSum = 0.0
         var centsSum = 0.0
         var used = 0
+        var considered = 0
         var reliable = false
+        var energy = 0.0
         var bestScore = Double.MAX_VALUE
         // Meilleur score de recouvrement parmi les partiels disponibles.
         for (h in 1..MAX_HARMONIC) {
@@ -104,6 +127,8 @@ class PolyPitchDetector(
             // On garde les partiels propres, ou à défaut le moins recouvert.
             if (score > max(RELIABLE_SCORE, bestScore + 1e-9)) continue
             if (!searchBounds(index, h, targets)) continue
+            considered++
+            energy += maxSquared(searchLo, searchHi)
             if (!findPeak(searchLo, searchHi)) continue
             if (peakMagnitude < noiseFloor * MIN_SNR || peakMagnitude < globalMax * MIN_RELATIVE) continue
             val cents = 1200.0 * log2(peakFrequency / expected)
@@ -114,6 +139,12 @@ class PolyPitchDetector(
             weightSum += weight
             used++
             if (score <= RELIABLE_SCORE) reliable = true
+        }
+        if (index < MAX_STRINGS) {
+            energies[index] = energy
+            clean[index] = bestScore <= RELIABLE_SCORE
+            partialsExpected[index] = considered
+            partialsFound[index] = used
         }
         return if (used == 0) {
             PolyString(detected = false, cents = Double.NaN, reliable = false)
@@ -162,6 +193,15 @@ class PolyPitchDetector(
             }
         }
         return score
+    }
+
+    /** Carré de l'amplitude maximale entre [loHz] et [hiHz] (énergie du partiel, même faible). */
+    private fun maxSquared(loHz: Double, hiHz: Double): Double {
+        val lo = max(4, ceil(loHz / paddedBinHz).toInt())
+        val hi = min(fft.bins - 5, floor(hiHz / paddedBinHz).toInt())
+        var best = 0.0
+        for (k in lo..hi) if (magnitude[k] > best) best = magnitude[k]
+        return best * best
     }
 
     /** Pic le plus fort entre [loHz] et [hiHz] ; fréquence estimée sur les bins non paddés. */
@@ -236,6 +276,9 @@ class PolyPitchDetector(
     companion object {
         /** 16384 échantillons ≈ 0,34 s à 48 kHz. */
         const val WINDOW = 16384
+
+        /** Nombre maximal de cordes suivies (accordages de 4 à 8 cordes). */
+        const val MAX_STRINGS = 8
 
         private const val MAX_HARMONIC = 3
         private const val OVERLAP_HARMONICS = 8
