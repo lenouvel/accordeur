@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icône : jauge d'accordeur (arc + zone juste + aiguille), zone sûre de 66 dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Arc de la jauge -->
+    <path
+        android:pathData="M29.57,55.11 A26,26 0 0,1 78.43,55.11"
+        android:strokeWidth="5"
+        android:strokeColor="@color/ic_launcher_gauge"
+        android:strokeLineCap="round" />
+
+    <!-- Zone « juste » -->
+    <path
+        android:pathData="M49.49,38.4 A26,26 0 0,1 58.51,38.4"
+        android:strokeWidth="5"
+        android:strokeColor="@color/ic_launcher_accent"
+        android:strokeLineCap="round" />
+
+    <!-- Aiguille -->
+    <path
+        android:pathData="M54,64 L54,44"
+        android:strokeWidth="3.5"
+        android:strokeColor="@color/ic_launcher_accent"
+        android:strokeLineCap="round" />
+
+    <!-- Pivot -->
+    <path
+        android:fillColor="@color/ic_launcher_accent"
+        android:pathData="M49.5,64 A4.5,4.5 0 1,0 58.5,64 A4.5,4.5 0 1,0 49.5,64 Z" />
+</vector>

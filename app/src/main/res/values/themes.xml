@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Thème de fenêtre minimal : Compose (Material 3) dessine tout le reste.
+         Fond sombre pour éviter un flash blanc au démarrage. -->
+    <style name="Theme.Accordeur" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>
