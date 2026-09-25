@@ -78,6 +78,7 @@ fun TunerScreen(
     onDetectionModeChange: (DetectionMode) -> Unit,
     onStringTap: (Int) -> Unit,
     onStringLongPress: (Int) -> Unit,
+    onToggleRecording: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -103,7 +104,7 @@ fun TunerScreen(
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            TopBar(state, onOpenTunings, onOpenSettings)
+            TopBar(state, onOpenTunings, onOpenSettings, onToggleRecording)
             Spacer(Modifier.height(12.dp))
             ModeSelector(settings.tunerMode, onModeChange)
 
@@ -172,7 +173,7 @@ fun TunerScreen(
 }
 
 @Composable
-private fun TopBar(state: TunerUiState, onOpenTunings: () -> Unit, onOpenSettings: () -> Unit) {
+private fun TopBar(state: TunerUiState, onOpenTunings: () -> Unit, onOpenSettings: () -> Unit, onToggleRecording: () -> Unit) {
     val notation = state.settings.notation
     Row(
         modifier = Modifier
@@ -223,6 +224,7 @@ private fun TopBar(state: TunerUiState, onOpenTunings: () -> Unit, onOpenSetting
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
+        if (state.settings.recordBank) RecordButton(state.recording, onToggleRecording)
         IconButton(onClick = onOpenSettings) {
             Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.cd_settings))
         }
@@ -348,7 +350,19 @@ private fun BottomHints(state: TunerUiState, onDetectionModeChange: (DetectionMo
     }
 }
 
-/** Niveau micro discret : « écoute… » + barre de niveau (+ pastille rouge si un son est enregistré). */
+/** Bouton de prise de test : ● pour lancer, ■ rouge pendant la prise. */
+@Composable
+private fun RecordButton(recording: Boolean, onToggle: () -> Unit) {
+    IconButton(onClick = onToggle) {
+        Icon(
+            imageVector = if (recording) AppIcons.Stop else AppIcons.Record,
+            contentDescription = stringResource(if (recording) R.string.cd_record_stop else R.string.cd_record_start),
+            tint = if (recording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Niveau micro discret : « écoute… » + barre de niveau (+ durée de la prise en cours). */
 @Composable
 private fun LevelIndicator(state: TunerUiState) {
     val level by animateFloatAsState(state.level, tween(120), label = "level")
@@ -362,6 +376,12 @@ private fun LevelIndicator(state: TunerUiState) {
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.error)
                     .semantics { contentDescription = description },
+            )
+            Text(
+                text = formatClock(state.recordingSeconds),
+                style = MaterialTheme.typography.labelSmall.merge(NumericStyle),
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 11.sp,
             )
         }
         Text(

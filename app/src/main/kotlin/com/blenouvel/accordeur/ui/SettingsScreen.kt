@@ -231,7 +231,7 @@ private fun MicSourceSetting(state: TunerUiState, onSelect: (MicSource) -> Unit)
 }
 
 /**
- * Banque de sons de test : enregistrement pendant l'écoute, bilan, export (menu de partage :
+ * Banque de sons de test : bouton de prise sur l'accordeur, bilan, export (menu de partage :
  * Proton Drive…) et suppression.
  */
 @Composable

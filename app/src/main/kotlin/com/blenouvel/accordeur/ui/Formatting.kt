@@ -18,6 +18,9 @@ import kotlin.math.abs
 /** Fréquence au format local : « 82,41 ». */
 fun formatHz(frequency: Double): String = String.format(Locale.getDefault(), "%.2f", frequency)
 
+/** Durée de prise : « 0:07 », « 4:32 ». */
+fun formatClock(seconds: Int): String = "%d:%02d".format(seconds / 60, seconds % 60)
+
 /** La de référence : « 440 » ou « 440,5 ». */
 fun formatA4(a4: Double): String =
     if (a4 % 1.0 == 0.0) a4.toInt().toString() else String.format(Locale.getDefault(), "%.1f", a4)

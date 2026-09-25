@@ -105,20 +105,22 @@
     <string name="mic_test_note">Test : %1$s  %2$s ¢</string>
     <string name="about_idle">Micro inactif</string>
     <string name="bank_title">Banque de sons de test</string>
-    <string name="bank_desc">Garde sur le téléphone le son brut (sans perte) de chaque note jouée, avec ce que l\'accordeur a affiché, pour tester les versions futures. Seuls les moments où ça joue sont gardés (1 Go au plus, les plus anciens partent d\'abord). Rien n\'est envoyé : exportez la banque (Proton Drive, Drive…) quand vous voulez.</string>
-    <string name="bank_record">Enregistrer pendant l\'écoute</string>
-    <string name="bank_empty">Aucun son enregistré</string>
-    <string name="bank_stats">Sons : %1$d · %2$s · %3$s</string>
+    <string name="bank_desc">Le bouton ● de l\'accordeur enregistre une prise : le son brut du micro (sans perte, silences compris) et ce que l\'accordeur a affiché, pour tester les versions futures. Rien n\'est enregistré sans appui ; la prise s\'arrête au second appui, en quittant l\'accordeur ou après 5 min. 1 Go au plus (les plus anciennes partent d\'abord). Rien n\'est envoyé : exportez la banque (Proton Drive, Drive…) quand vous voulez.</string>
+    <string name="bank_record">Bouton d\'enregistrement sur l\'accordeur</string>
+    <string name="bank_empty">Aucune prise enregistrée</string>
+    <string name="bank_stats">Prises : %1$d · %2$s · %3$s</string>
     <string name="bank_export">Exporter…</string>
     <string name="bank_exporting">Préparation…</string>
     <string name="bank_clear">Vider</string>
-    <string name="bank_clear_confirm">Supprimer les %1$d sons de la banque ?</string>
+    <string name="bank_clear_confirm">Supprimer les %1$d prises de la banque ?</string>
     <string name="bank_share_title">Exporter la banque de sons</string>
-    <string name="cd_recording">Enregistrement en cours dans la banque de sons</string>
+    <string name="cd_recording">Prise de test en cours d\'enregistrement</string>
+    <string name="cd_record_start">Enregistrer une prise de test</string>
+    <string name="cd_record_stop">Arrêter l\'enregistrement</string>
 
     <!-- Permission et erreurs -->
     <string name="permission_title">Accès au micro</string>
-    <string name="permission_text">L\'accordeur écoute votre guitare avec le micro du téléphone. Le son est analysé en direct et n\'est jamais envoyé. Les notes jouées sont gardées sur le téléphone dans une banque de sons de test, que vous pouvez désactiver ou vider dans les réglages.</string>
+    <string name="permission_text">L\'accordeur écoute votre guitare avec le micro du téléphone. Le son est analysé en direct et n\'est jamais envoyé. Rien n\'est enregistré, sauf les prises de test que vous lancez avec le bouton ●.</string>
     <string name="permission_grant">Autoriser le micro</string>
     <string name="permission_open_settings">Ouvrir les réglages de l\'application</string>
     <string name="permission_denied">Le micro a été refusé. Autorisez-le dans les réglages de l\'application.</string>
@@ -128,6 +130,11 @@
     <!-- Navigation -->
     <string name="nav_tuner">Accordeur</string>
     <string name="nav_scales">Gammes</string>
+    <string name="nav_spectrum">Spectre</string>
+
+    <!-- Spectre -->
+    <string name="spectrum_hint">Jouez une note ou un accord</string>
+    <string name="cd_spectrum">Spectre du son capté, de 20 Hz à 20 kHz, avec les notes entendues</string>
 
     <!-- Gammes sur le manche -->
     <string name="scales_key">Tonalité</string>

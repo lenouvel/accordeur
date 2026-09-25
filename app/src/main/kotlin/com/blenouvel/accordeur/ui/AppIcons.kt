@@ -3,12 +3,13 @@ package com.blenouvel.accordeur.ui
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
-/** Icônes de navigation (24 dp), teintées par `Icon`. */
+/** Icônes de l'app (24 dp), teintées par `Icon`. */
 object AppIcons {
     private val ink = SolidColor(Color.Black)
 
@@ -31,6 +32,55 @@ object AppIcons {
                 lineTo(15.5f, 9f)
             }
             .path(fill = ink) { dot(12f, 16f, 2f) }
+            .build()
+    }
+
+    /** Enregistrer : pastille dans un anneau. */
+    val Record: ImageVector by lazy {
+        ImageVector.Builder("Record", 24.dp, 24.dp, 24f, 24f)
+            .path(stroke = ink, strokeLineWidth = 1.8f) { dot(12f, 12f, 8.5f) }
+            .path(fill = ink) { dot(12f, 12f, 5f) }
+            .build()
+    }
+
+    /** Arrêter : carré arrondi. */
+    val Stop: ImageVector by lazy {
+        ImageVector.Builder("Stop", 24.dp, 24.dp, 24f, 24f)
+            .path(fill = ink) {
+                moveTo(8.5f, 6.5f)
+                lineTo(15.5f, 6.5f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2f, dy1 = 2f)
+                lineTo(17.5f, 15.5f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2f, dy1 = 2f)
+                lineTo(8.5f, 17.5f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2f, dy1 = -2f)
+                lineTo(6.5f, 8.5f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2f, dy1 = -2f)
+                close()
+            }
+            .build()
+    }
+
+    /** Spectre : enveloppe à pics sur une ligne de base. */
+    val Spectrum: ImageVector by lazy {
+        ImageVector.Builder("Spectrum", 24.dp, 24.dp, 24f, 24f)
+            .path(stroke = ink, strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round) {
+                moveTo(2.5f, 20f)
+                lineTo(21.5f, 20f)
+            }
+            .path(stroke = ink, strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+                moveTo(3f, 18f)
+                lineTo(5.5f, 17f)
+                lineTo(7f, 6f)
+                lineTo(8.5f, 16f)
+                lineTo(11f, 15f)
+                lineTo(12.5f, 9.5f)
+                lineTo(14f, 15.5f)
+                lineTo(16.5f, 16f)
+                lineTo(17.8f, 12.5f)
+                lineTo(19f, 17f)
+                lineTo(21f, 17.5f)
+            }
             .build()
     }
 

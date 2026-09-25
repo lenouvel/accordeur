@@ -94,6 +94,14 @@ class AudioEngine(context: Context) {
             processor?.targets = value
         }
 
+    /** Page Spectre : spectre et notes du signal brut au lieu de l'accordage. */
+    @Volatile
+    var spectrum: Boolean = false
+        set(value) {
+            field = value
+            processor?.spectrum = value
+        }
+
     /** Source demandée ; la changer relance la capture si elle tourne. */
     @Volatile
     var source: MicSource = MicSource.AUTO
@@ -173,6 +181,7 @@ class AudioEngine(context: Context) {
         val processor = TunerProcessor(sampleRate).also {
             it.mode = mode
             it.targets = targets
+            it.spectrum = spectrum
         }
         this.processor = processor
         val samples = FloatArray(PitchDetector.HOP)

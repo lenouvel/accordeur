@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
+import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings as SystemSettings
@@ -27,10 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,11 +53,12 @@ import com.blenouvel.accordeur.audio.ReferenceTone
 import com.blenouvel.accordeur.data.SettingsStore
 import com.blenouvel.accordeur.data.SoundBank
 import com.blenouvel.accordeur.data.ThemeMode
-import com.blenouvel.accordeur.ui.AppIcons
+import com.blenouvel.accordeur.ui.AppNavigationBar
 import com.blenouvel.accordeur.ui.ScalesActions
 import com.blenouvel.accordeur.ui.ScalesScreen
 import com.blenouvel.accordeur.ui.SettingsActions
 import com.blenouvel.accordeur.ui.SettingsScreen
+import com.blenouvel.accordeur.ui.SpectrumScreen
 import com.blenouvel.accordeur.ui.TunerScreen
 import com.blenouvel.accordeur.ui.TuningSheet
 import com.blenouvel.accordeur.ui.theme.AccordeurTheme
@@ -90,9 +88,9 @@ class MainActivity : ComponentActivity() {
             // Icônes de la barre d'état lisibles quel que soit le thème choisi dans l'app.
             LaunchedEffect(darkTheme) {
                 val style = if (darkTheme) {
-                    SystemBarStyle.dark(Color.TRANSPARENT)
+                    SystemBarStyle.dark(AndroidColor.TRANSPARENT)
                 } else {
-                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                    SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT)
                 }
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
@@ -102,8 +100,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-private enum class Screen { TUNER, SCALES, SETTINGS }
 
 @Composable
 private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewModel, state: TunerUiState) {
@@ -123,20 +119,21 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
         onPauseOrDispose { }
     }
 
-    var screen by rememberSaveable { mutableStateOf(Screen.TUNER) }
-    var returnTo by rememberSaveable { mutableStateOf(Screen.TUNER) }
+    var screen by rememberSaveable { mutableStateOf(Page.TUNER) }
+    var returnTo by rememberSaveable { mutableStateOf(Page.TUNER) }
+    LaunchedEffect(screen) { viewModel.setPage(screen) }
     var showTunings by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = screen != Screen.TUNER) {
-        screen = if (screen == Screen.SETTINGS) returnTo else Screen.TUNER
+    BackHandler(enabled = screen != Page.TUNER) {
+        screen = if (screen == Page.SETTINGS) returnTo else Page.TUNER
     }
     val openSettings = {
         returnTo = screen
-        screen = Screen.SETTINGS
+        screen = Page.SETTINGS
     }
 
-    // Micro actif seulement pour l'accordeur (et ses réglages), au premier plan : start en
+    // Micro actif pour l'accordeur (et ses réglages) et le spectre, au premier plan : start en
     // onResume, stop en onPause ou en passant sur la vue Gammes.
-    if (granted && screen != Screen.SCALES) {
+    if (granted && screen != Page.SCALES) {
         LifecycleResumeEffect(viewModel) {
             viewModel.start()
             onPauseOrDispose { viewModel.stop() }
@@ -144,7 +141,7 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
     }
     KeepScreenOn(state.settings.keepScreenOn)
 
-    if (screen == Screen.SETTINGS) {
+    if (screen == Page.SETTINGS) {
         SettingsScreen(
             state = state,
             actions = SettingsActions(
@@ -175,7 +172,14 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                     .padding(inner)
                     .consumeWindowInsets(inner),
             ) {
-                if (screen == Screen.SCALES) {
+                if (screen == Page.SPECTRUM && granted) {
+                    val spectrumState by viewModel.spectrumState.collectAsStateWithLifecycle()
+                    SpectrumScreen(
+                        state = spectrumState,
+                        notation = state.settings.notation,
+                        onOpenSettings = openSettings,
+                    )
+                } else if (screen == Page.SCALES) {
                     val scalesState by scalesViewModel.uiState.collectAsStateWithLifecycle()
                     ScalesScreen(
                         state = scalesState,
@@ -200,6 +204,7 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                         onDetectionModeChange = viewModel::setDetectionMode,
                         onStringTap = viewModel::onStringTapped,
                         onStringLongPress = viewModel::playReferenceTone,
+                        onToggleRecording = viewModel::toggleRecording,
                         onRetry = {
                             viewModel.stop()
                             viewModel.start()
@@ -225,25 +230,6 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
             onSave = viewModel::saveCustomTuning,
             onDelete = viewModel::deleteCustomTuning,
             onDismiss = { showTunings = false },
-        )
-    }
-}
-
-/** Barre de navigation : accordeur / gammes. */
-@Composable
-private fun AppNavigationBar(current: Screen, onSelect: (Screen) -> Unit) {
-    NavigationBar {
-        NavigationBarItem(
-            selected = current == Screen.TUNER,
-            onClick = { onSelect(Screen.TUNER) },
-            icon = { Icon(AppIcons.Tuner, contentDescription = null) },
-            label = { Text(stringResource(R.string.nav_tuner)) },
-        )
-        NavigationBarItem(
-            selected = current == Screen.SCALES,
-            onClick = { onSelect(Screen.SCALES) },
-            icon = { Icon(AppIcons.Fretboard, contentDescription = null) },
-            label = { Text(stringResource(R.string.nav_scales)) },
         )
     }
 }

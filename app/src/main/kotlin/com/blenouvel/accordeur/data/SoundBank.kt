@@ -101,11 +101,13 @@ class SoundBank(context: Context) {
             Banque de sons de test — Accordeur
             ==================================
 
-            Chaque son joué pendant l'écoute (quand l'option est activée) donne deux fichiers :
+            Chaque prise lancée avec le bouton ● de l'accordeur donne deux fichiers (plusieurs
+            paires si un réglage a changé pendant la prise : même numéro « prise= ») :
 
             - AAAAMMJJ-hhmmss-mmm_<mode>_<accordage>.wav : le signal brut du micro, tel que le
-              téléphone l'a livré, avant tout filtrage. Mono, sans perte : float 32 bits, ou PCM
-              16 bits si le téléphone ne fournit que du 16 bits. 1 s avant le son, 1 s après.
+              téléphone l'a livré, avant tout filtrage, de ~1 s avant l'appui jusqu'à l'arrêt,
+              silences compris. Mono, sans perte : float 32 bits, ou PCM 16 bits si le téléphone
+              ne fournit que du 16 bits.
             - le .txt du même nom : téléphone, source micro, réglages (mode, accordage, La de
               référence, corde verrouillée), puis ce que l'accordeur a affiché à chaque trame
               (~43 ms) : niveau, son détecté, fréquence, valeur maintenue, tableau poly.

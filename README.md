@@ -1,7 +1,8 @@
 # Accordeur — guitare 6 et 7 cordes (Android natif)
 
 Accordeur de précision pour Samsung S25 (et tout Android 8+), écrit en Kotlin + Jetpack Compose,
-sans NDK, avec une vue **Gammes** qui affiche gammes et modes sur un manche vertical.
+sans NDK, avec une vue **Gammes** qui affiche gammes et modes sur un manche vertical, et une vue
+**Spectre** qui montre le spectre capté, les notes entendues et le nom de l'accord.
 Spécification de l'accordeur : [`PLAN.md`](PLAN.md).
 
 - **Mono** : une corde à la fois, précision ~0,1 cent sur signal propre, lecture stable à ±0,5 cent.
@@ -10,8 +11,12 @@ Spécification de l'accordeur : [`PLAN.md`](PLAN.md).
 - Cordes **très graves** : détection fiable jusqu'à ~35 Hz (G♯1 = 51,91 Hz en Drop G♯), même
   quand le micro du téléphone coupe la fondamentale (détection par la série de partiels).
 - **Source micro** réglable (UNPROCESSED, musique, reconnaissance vocale…) avec test en direct.
-- **Banque de sons de test** : chaque note jouée est gardée sans perte avec ce que l'accordeur a
-  affiché, exportable vers Proton Drive, et rejouable sur ordinateur (non-régression).
+- **Spectre** : spectre du micro en direct (20 Hz–20 kHz), pics annotés de leur note pour une
+  corde seule, notes d'un accord, nom de l'accord (notation anglaise, ex. `A7sus4`) et décomposition
+  par degrés (La (Fondamentale), Ré (Quarte), Mi (Quinte), Sol (Septième mineure)).
+- **Banque de sons de test** : un bouton ● sur l'accordeur enregistre une prise sans perte, avec
+  ce que l'accordeur a affiché, exportable vers Proton Drive, et rejouable sur ordinateur
+  (non-régression). Rien n'est enregistré sans appui.
 - Notation **française** (Do Ré Mi), **anglaise** (C D E) ou **les deux**.
 - Accordages fournis : 6 cordes Standard, Drop D ; 7 cordes Standard, Drop A, Drop G♯
   (`G#D#G#C#F#A#D#`) ; plus Mi♭ / Ré / Do / Si standard, Drop C♯, Drop C, Drop B, Double Drop D,
@@ -62,7 +67,8 @@ Au premier lancement, autoriser le **micro**.
 
 Le traitement du signal est en Kotlin pur : il est testé sur la JVM avec des signaux synthétiques
 (sinusoïdes, cordes « raides » inharmoniques captées par un micro de téléphone, bruits blanc, rose
-et grondement, grattages complets puis cordes rejouées seules) — 49 tests.
+et grondement, grattages complets puis cordes rejouées seules, accords) — 62 tests, dont un
+ignoré : une limite connue de la page Spectre (voir [Reste à faire](#reste-à-faire)).
 
 `BankReplayTest` rejoue en plus la **banque de sons enregistrée sur le téléphone** (voir plus bas) :
 décompresser l'archive exportée à la racine du projet sous le nom `testbank/` (ou indiquer le
@@ -84,12 +90,14 @@ ACCORDEUR_BANQUE_STRICT=1 ./gradlew test --tests '*BankReplayTest*' # échoue en
 | Toucher une corde | Mode auto : la verrouiller (re-toucher pour libérer). Mode manuel : la choisir. Mode poly : passer en mono sur cette corde |
 | Appui long sur une corde | Son de référence (2,5 s, l'analyse est suspendue pendant la lecture) |
 | Puce **Auto / Manuel** | Auto : note la plus proche. Manuel : écart par rapport à la corde choisie |
+| **●** (en haut, à côté de ⚙) | Lance une prise de test (■ rouge et durée pendant la prise) ; second appui : l'arrête |
 
 La jauge passe au vert dans la tolérance (±5 cents par défaut, « Parfait » sous ±3 cents) ; une
 corde restée juste ~0,35 s passe au vert dans la rangée (avec une légère vibration).
 
-La barre du bas bascule entre **Accordeur** et **Gammes** ; les réglages (⚙) sont accessibles
-depuis les deux. Le micro n'est actif que sur l'accordeur (et ses réglages).
+La barre du bas, compacte (48 dp au lieu des 80 dp de Material, icône et libellé sur une ligne),
+bascule entre **Accordeur**, **Gammes** et **Spectre** ; les réglages (⚙) sont accessibles depuis
+chaque page. Le micro est actif sur l'accordeur (et ses réglages) et sur le spectre, pas sur Gammes.
 
 ### Source du micro
 
@@ -103,20 +111,24 @@ expose aux applications.
 
 ### Banque de sons de test
 
-Réglages › *Banque de sons de test* (activée par défaut, désactivable). Pendant l'écoute, chaque
-note jouée est gardée **sur le téléphone** :
+Rien n'est enregistré sans appui sur le bouton **●** de l'accordeur. Une **prise** va de ~1 s avant
+l'appui (pré-enregistrement glissant, en mémoire) jusqu'au second appui ; elle s'arrête aussi en
+quittant l'accordeur (Gammes, Spectre, réglages, arrière-plan) et au bout de 5 min. Elle est gardée
+**sur le téléphone** :
 
-- le **signal brut** du micro, tel que livré, avant tout filtrage : WAV mono **sans perte**
-  (float 32 bits, ou 16 bits si le téléphone ne fournit que du 16 bits) ;
-- seulement quand ça joue (gate ouvert), avec 1 s avant (le rejeu apprend le bruit de fond et voit
-  l'attaque entière) et 1 s après ; 2 min au plus par son ; **1 Go au plus** (les plus anciens
-  partent d'abord) ;
-- une **fiche texte** par son : téléphone, Android, version de l'app, source micro, réglages
-  (mode, détection, accordage, La, corde verrouillée) et, trame par trame (~43 ms), ce que
-  l'accordeur a affiché (niveau, son détecté, fréquence, valeur maintenue, tableau poly).
+- le **signal brut** du micro, tel que livré, avant tout filtrage, **silences compris** : WAV mono
+  **sans perte** (float 32 bits, ou 16 bits si le téléphone ne fournit que du 16 bits) ; changer
+  un réglage pendant la prise la coupe en deux fichiers (même numéro de prise) ; **1 Go au plus**
+  (les plus anciennes partent d'abord) ;
+- une **fiche texte** par fichier (format 2) : téléphone, Android, version de l'app, source micro,
+  réglages (mode, détection, accordage, La, corde verrouillée), numéro de prise et, trame par trame
+  (~43 ms), ce que l'accordeur a affiché (niveau, son détecté, fréquence, valeur maintenue,
+  tableau poly).
 
 L'écriture se fait sur un fil dédié (le fil audio ne fait que copier chaque bloc dans un tampon
-recyclé) ; une pastille rouge près de la barre de niveau signale un enregistrement en cours.
+recyclé) ; pendant la prise, le bouton devient ■ rouge et la durée s'affiche près de la barre de
+niveau. Réglages › *Banque de sons de test* › *Bouton d'enregistrement sur l'accordeur* masque le
+bouton (et interdit toute prise).
 **Exporter…** prépare une archive zip et ouvre le menu de partage d'Android : choisir
 **Proton Drive** (ou Drive, e-mail…). **Vider** efface la banque. Rien n'est jamais envoyé
 automatiquement.
@@ -158,6 +170,38 @@ Gammes disponibles :
 - **Autres** : majeure harmonique, double harmonique (byzantine), mineure hongroise, napolitaines
   mineure et majeure, persane, énigmatique, bebop dominante, bebop majeure.
 
+## Spectre
+
+Le spectre du signal **brut** du micro (sans le filtrage de l'accordeur), axe logarithmique de
+20 Hz à 20 kHz (repères 50 Hz … 10 kHz), niveaux en dBFS sur une plage de 66 dB qui suit le son.
+La courbe est animée à la cadence de l'écran (montée en 40 ms, descente en 180 ms) : fluide même
+si l'analyse ne tombe que toutes les 43 ms.
+
+- **Une corde** : sa note en pastille au-dessus de sa fondamentale (même absente du spectre,
+  coupée par le micro), et ses partiels annotés de leur note (La3, Mi4, La4, Do♯5…).
+- **Plusieurs cordes** : une pastille par note entendue, sur une ligne, reliée à sa note.
+- **Sous le spectre** : la note (et sa fréquence), ou l'**accord** en notation anglaise (`Am7`,
+  `F♯m7♭5`, `C/E`, `G♯11`…) et sa **décomposition** : chaque note, orthographiée selon son degré
+  (Mi♭ et non Ré♯ dans Do mineur), avec son nom de degré (Fondamentale, Tierce mineure, Quarte,
+  Quinte, Septième mineure…). Deux notes qui ne forment pas d'accord : les notes et l'intervalle.
+  L'affichage suit l'harmonie la plus fréquente des ~0,35 dernières secondes et reste affiché,
+  atténué, après l'extinction du son.
+
+Méthode (`SpectrumAnalyzer`, ~2,4 ms par analyse sur la JVM) : fenêtre de Hann de 16384
+échantillons (0,34 s), pics au-dessus du bruit local ; chaque pic fort propose une fondamentale
+(partiel 1 à 6) sur laquelle on ajuste la série d'une corde raide, comme dans l'accordeur ; les
+notes sont choisies une à une selon la part de l'énergie des pics qu'elles expliquent **en
+propre** (les partiels d'une corde ne deviennent pas des notes), une série trouée (sous-harmonique
+fantôme) est écartée, une basse complète est ajoutée si besoin ; une note doit être entendue sur 2
+des 3 dernières trames. Le nom vient de `ChordNamer` : chaque note présente est essayée comme
+fondamentale, on garde le nom le plus simple (table de ~40 formules), la basse servant de
+fondamentale à égalité et un renversement coûtant cher.
+
+Mesuré sur le banc (échantillons réels de 3 banques de sons × 3 guitares, micro de téléphone
+simulé) : **92 %** des trames d'une corde seule montrent la bonne note, seule ; **82 %** des
+trames affichent le bon nom pour 33 accords courants (75 % trame par trame). Limites : voir
+[Reste à faire](#reste-à-faire).
+
 ## Architecture
 
 ```
@@ -165,13 +209,14 @@ Micro ─► AudioEngine ─► TunerProcessor ───────────
        (AudioRecord,    pré-filtrage ─► PitchDetector (MPM + série de        (StateFlow)
         thread audio)   (DC, 32 Hz–1,3 kHz)  partiels) ─► PitchStabilizer
             │                          PolyTracker (mode poly, tableau maintenu)
-            └─► SoundRecorder (banque de sons, fil d'écriture dédié)
+            │                   signal brut ─► SpectrumAnalyzer (page Spectre : spectre, notes)
+            └─► SoundRecorder (prises au bouton ●, fil d'écriture dédié)
 ```
 
 ```
 app/src/main/kotlin/com/blenouvel/accordeur/
-├─ MainActivity.kt          navigation (Accordeur / Gammes / Réglages), permission micro, start/stop audio, écran allumé
-├─ TunerViewModel.kt        état UI (StateFlow), verrou de corde, cordes « au vert », son de référence, banque de sons
+├─ MainActivity.kt          navigation (Accordeur / Gammes / Spectre / Réglages), permission micro, start/stop audio, écran allumé
+├─ TunerViewModel.kt        état UI (StateFlow), page, verrou de corde, cordes « au vert », son de référence, prises, spectre (vote)
 ├─ ScalesViewModel.kt       vue Gammes : réglages mémorisés, degrés mis en évidence, notes jouées
 ├─ audio/
 │  ├─ AudioEngine.kt        AudioRecord (source choisie ou auto), 48 kHz float (replis 44,1 kHz / 16 bits), effets coupés
@@ -181,16 +226,19 @@ app/src/main/kotlin/com/blenouvel/accordeur/
 │  ├─ PitchStabilizer.kt    gate adaptatif, confirmation, garde d'octave, médian 5, filtre 1€, maintien
 │  ├─ PolyPitchDetector.kt  FFT haute résolution par corde cible (mesure et énergie de chaque corde)
 │  ├─ PolyTracker.kt        mode poly : grattage / corde seule, tableau maintenu, suivi pendant que ça sonne
-│  ├─ SoundRecorder.kt      banque de sons : pré-roll, WAV sans perte, fiche texte, plafond
+│  ├─ SpectrumAnalyzer.kt   page Spectre : spectre log 20 Hz–20 kHz, pics, notes (séries de partiels, choix glouton)
+│  ├─ SoundRecorder.kt      banque de sons : prises au bouton, pré-enregistrement, WAV sans perte, fiche, plafond
 │  ├─ Fft.kt                FFT radix-2 complexe + FFT réelle (Kotlin pur)
 │  ├─ Biquad.kt             DC block, passe-haut 32 Hz, passe-bas 1,3 kHz (ordre 4)
 │  ├─ OneEuroFilter.kt      lissage adaptatif de l'aiguille
 │  └─ ReferenceTone.kt      son d'une note (synthèse additive en arrière-plan, AudioTrack)
 ├─ model/                   Note, GuitarString, Tuning, presets ; NoteMapper (fréq ↔ MIDI ↔ note ↔ cents, FR/EN)
 │                           Scales : catalogue des gammes, degrés, formule, orthographe, positions sur le manche
+│                           Chords : nom des accords (ChordNamer), degrés, orthographe, Harmony (note/accord)
 ├─ data/                    SettingsStore (DataStore), SoundBank (bilan, archive zip, suppression)
 └─ ui/                      TunerScreen, TunerMeter (jauge Canvas), StringSelector, PolyMeter, TuningSheet,
                             ScalesScreen, FretboardView (manche Canvas), ScalePickers (clavier, gammes),
+                            SpectrumScreen (spectre Canvas animé, accord), NavigationBar (barre compacte),
                             SettingsScreen, Share (partage de l'archive), AppIcons, thème
 ```
 
@@ -212,8 +260,11 @@ app/src/main/kotlin/com/blenouvel/accordeur/
 5. **Série de partiels** : pics du spectre de Hann (déduit du spectre zéro-paddé, estimateur exact
    à deux bins) au-dessus du bruit local ; candidats f0 = MPM et ses sous-multiples, et chaque pic
    fort divisé par h = 1…12. Pour chaque candidat, la série de partiels d'une **corde raide**
-   f_h = h·f0·√(1 + B·h²) est ancrée sur les partiels forts puis étendue vers l'aigu (ajustement
-   de f0 et B par moindres carrés). On retient la série qui explique le plus d'énergie du spectre ;
+   f_h = h·f0·√(1 + B·h²) est ancrée sur les partiels forts ; la raideur B de départ est choisie
+   sur une grille (1e-4…2e-3, celle qui aligne le plus de partiels : un partiel grave décalé, par
+   un ronflement voisin par exemple, ne la fausse plus), puis la série est étendue vers l'aigu
+   (ajustement de f0 et B par moindres carrés, partiels aberrants écartés). On retient la série qui
+   explique le plus d'énergie du spectre ;
    un candidat plus grave doit en expliquer nettement plus, avec une série assez complète (pas de
    fausse sous-octave). La fréquence affichée est celle du **premier partiel** ajusté, même
    inaudible.
@@ -319,19 +370,77 @@ Le passage à JTransforms reste possible en quelques lignes si on le souhaite.
 
 Faites dans l'environnement de développement (sans SDK Android, Google Maven y étant inaccessible) :
 
-- compilation et exécution des 49 tests JUnit (DSP, modèle, poly, banque de sons, gammes) ;
-- banc de mesure hors appareil : vrais échantillons de guitare (soundfonts FluidR3 et MusyngKite)
-  passés dans des modèles de micro de téléphone, cordes filées synthétiques, bruits, scénarios
-  poly (grattage puis corde rejouée) — chiffres ci-dessus ;
+- compilation et exécution des 62 tests JUnit (DSP, modèle, poly, banque de sons, gammes,
+  spectre et accords ; 1 ignoré, limite connue) ;
+- banc de mesure hors appareil (archivé dans [`banc/`](banc/)) : vrais échantillons de guitare
+  (soundfonts FluidR3, MusyngKite, FatBoy) passés dans des modèles de micro de téléphone, cordes
+  filées synthétiques, conditions dégradées (ronflement 50 Hz, grondement, frisage, résonances…),
+  bruits, scénarios poly, 33 accords × 9 guitares — chiffres ci-dessus ;
 - compilation de **tout** le code de l'app (UI Compose, ViewModel, AudioEngine, DataStore,
   MainActivity) contre Compose 1.12.1 / Material 3 1.4, le framework Android réel (API 37) et
   des stubs pour activity / DataStore / lifecycle / core : aucune erreur, aucun avertissement ;
-- rendu des écrans Accordeur, Gammes et Réglages (vrai code, Compose Desktop + Skia, à la taille
-  d'un S25) pour contrôle visuel de la mise en page.
+- rendu des écrans Accordeur (bouton ●), Gammes (barre compacte, avant/après), Spectre (corde
+  seule, accords à partir de vraies analyses) et Réglages (vrai code, Compose Desktop + Skia, à la
+  taille d'un S25) pour contrôle visuel de la mise en page.
 
 À faire sur le téléphone (non exécuté ici) : la recette manuelle du plan (§12) — chaque corde de
 chaque preset, robustesse au bruit ambiant, cordes graves (Drop G♯, Drop A), bascule Mono/Poly,
 notation FR/EN, La de référence, accordage personnalisé, thèmes ; vue Gammes ; **comparer les
 sources micro** avec le test en direct (grosse corde) ; mode poly (grattage, corde rejouée seule,
-affichage maintenu) ; banque de sons (pastille rouge, export vers Proton Drive, rejeu sur
-ordinateur avec `BankReplayTest`).
+affichage maintenu) ; prises au bouton ● (arrêt en changeant de page, export vers Proton Drive,
+rejeu sur ordinateur avec `BankReplayTest`) ; page Spectre (fluidité, notes, accords) ; barre du
+bas compacte.
+
+## Reste à faire
+
+Développement arrêté ici à la demande ; état au 25 septembre 2026.
+
+### Corde grave G♯1 (Drop G♯) : diagnostic à reprendre
+
+Essais faits (chaîne complète, accordage G♯D♯G♯C♯F♯A♯D♯, micro de téléphone simulé en coupe-bas
+150–200 Hz, crête −60 et −72 dBFS, lecture mesurée de 0,2 à 7,5 s après l'attaque) :
+
+- vrais échantillons Ab1 (3 banques × 3 guitares) : 100 % ; cordes synthétiques : raideur B de
+  1e-4 à 1,2e-3, électrique débranchée, pincement au 1/10 et au 1/4, glissement de 30 ¢,
+  2 polarisations, résonance de Sol♯2/Ré♯2, réverbération, frisage : ~100 % ;
+- échecs trouvés : **ronflement secteur 50 Hz** (ampli, micros simple bobinage) — ses harmoniques
+  150–300 Hz tombent à 6–11 Hz des partiels 3 à 6 de G♯1 et faussaient l'estimation de raideur ;
+  corrigé en partie (raideur choisie sur une grille, partiels aberrants écartés : de 83–93 % à
+  93–97 % de lecture en début de note), mais en fin de note la lecture tombe encore à 0–16 % : le
+  gate (niveau global) reste fermé tant que le ronflement domine ; grondement de pièce : 71–85 % en
+  fin de note ; partiels réels s'écartant de 0,4 % du modèle de corde raide : 6 à 15 ¢ d'erreur.
+
+Pistes : **enregistrer des prises de la corde G♯ avec le bouton ●** et les rejouer
+(`BankReplayTest`), c'est le plus sûr pour trouver la vraie cause ; empreinte spectrale du bruit
+apprise dans les silences (ronflement, ventilation) retirée des pics et du gate ; gate sur
+l'excédent spectral plutôt que sur le niveau global ; ne pas laisser monter le bruit de fond
+estimé tant qu'une note est suivie ; comparer les sources micro du S25 avec le test en direct.
+
+### Page Spectre : limites connues
+
+- Accords manqués (banc) : `G♯11` (cordes à vide du Drop G♯ : La♯3 est invisible, ses partiels
+  tombent à 2–4 ¢ de ceux de Sol♯1 et Ré♯2), `Em7` lu `Em` (Ré4 manqué), `Fmaj7`, `A7sus4` et
+  `Cadd9` parfois lus avec une **sous-octave fantôme** à la basse (Sol2 « expliquant » Sol3 + Ré4) ;
+  Mi majeur synthétique : basse Mi2 perdue une trame sur deux (`E/B`, test
+  `SpectrumAnalyzerTest.rootInTheBassOfEMajor` ignoré en attendant).
+- Notes seules aiguës parfois lues une octave au-dessus (La4 → La5) quand leurs partiels 3 et 4
+  sont très faibles.
+- Pistes : bouton ● aussi sur la page Spectre pour enregistrer de vrais accords ; estimation
+  conjointe (NNLS / gabarits d'accords) ; logique de basse plus fine ; réglage sur prises réelles.
+- Non essayé sur téléphone : fluidité réelle, charge CPU (≈ 2,4 ms par analyse sur la JVM).
+
+### Banc d'essai à intégrer au build
+
+Le banc utilisé pour ces mesures est **archivé tel quel** dans [`banc/`](banc/) (hors du build :
+il ne change rien à `./gradlew test`) : `kotlin/` (bancs `LowStringDiag`, `StiffStringDiag`,
+`LowTorture`, `NoiseDiag`, `PolyScenario`, `ChordBench`, `FftBench`, traces), `harnais/` (projet
+Gradle JVM autonome qui compile le code pur de l'app avec les tests, scripts qui génèrent les
+copies instrumentées, `telecharger-echantillons.sh` : notes G♯1–E5 des banques FluidR3 (CC BY 3.0),
+MusyngKite et FatBoy (CC BY-SA 3.0), commit `044fab8e` épinglé). À faire : remplacer les chemins
+absolus du conteneur de développement (`PhoneSim.dir`, `build.gradle.kts`, scripts), en faire un
+jeu de tests optionnel (`./gradlew banc`) avec JLayer en dépendance de test, et télécharger les
+échantillons à la première exécution.
+
+### Calibration du micro
+
+Non explorée (à la demande) : à reprendre plus tard.

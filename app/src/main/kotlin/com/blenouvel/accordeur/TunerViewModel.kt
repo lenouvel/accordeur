@@ -8,6 +8,7 @@ import com.blenouvel.accordeur.audio.MicSource
 import com.blenouvel.accordeur.audio.PolyReading
 import com.blenouvel.accordeur.audio.RecordingContext
 import com.blenouvel.accordeur.audio.ReferenceTone
+import com.blenouvel.accordeur.audio.SpectrumFrame
 import com.blenouvel.accordeur.audio.TunerFrame
 import com.blenouvel.accordeur.audio.TunerMode
 import com.blenouvel.accordeur.audio.TunerTargets
@@ -18,6 +19,7 @@ import com.blenouvel.accordeur.data.SoundBank
 import com.blenouvel.accordeur.data.ThemeMode
 import com.blenouvel.accordeur.model.CustomTuningCodec
 import com.blenouvel.accordeur.model.GuitarString
+import com.blenouvel.accordeur.model.Harmony
 import com.blenouvel.accordeur.model.Notation
 import com.blenouvel.accordeur.model.Note
 import com.blenouvel.accordeur.model.NoteMapper
@@ -34,6 +36,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
+
+/** Page affichée. Le micro sert à l'accordeur (et à ses réglages) et au spectre, pas aux gammes. */
+enum class Page { TUNER, SCALES, SPECTRUM, SETTINGS }
 
 /** État complet de l'écran, recalculé à chaque analyse (~23 fois par seconde). */
 data class TunerUiState(
@@ -64,8 +69,10 @@ data class TunerUiState(
     val poly: PolyReading? = null,
     /** Corde dont le son de référence est en cours de lecture, −1 sinon. */
     val playingString: Int = -1,
-    /** Un son est en cours d'enregistrement dans la banque de test. */
+    /** Une prise de test est en cours (bouton ●). */
     val recording: Boolean = false,
+    /** Durée de la prise en cours (s). */
+    val recordingSeconds: Int = 0,
     /** Bilan de la banque de sons (null tant qu'il n'a pas été lu). */
     val bank: SoundBank.Stats? = null,
     /** Archive d'export de la banque en préparation. */
@@ -73,6 +80,17 @@ data class TunerUiState(
 ) {
     val inTune: Boolean get() = cents?.let { abs(it) <= settings.toleranceCents } ?: false
 }
+
+/** Page Spectre : spectre du moment, et note ou accord affiché (stabilisé, maintenu). */
+data class SpectrumUiState(
+    val frame: SpectrumFrame? = null,
+    /** Note ou accord affiché sous le spectre. */
+    val harmony: Harmony? = null,
+    /** Plus rien n'est entendu : [harmony] est la dernière valeur, à afficher atténuée. */
+    val holding: Boolean = false,
+    /** Signal utile présent. */
+    val signal: Boolean = false,
+)
 
 class TunerViewModel(
     private val settingsStore: SettingsStore,
@@ -84,6 +102,13 @@ class TunerViewModel(
     private val _uiState = MutableStateFlow(TunerUiState())
     val uiState: StateFlow<TunerUiState> = _uiState.asStateFlow()
 
+    private val _spectrumState = MutableStateFlow(SpectrumUiState())
+    val spectrumState: StateFlow<SpectrumUiState> = _spectrumState.asStateFlow()
+
+    /** Harmonies des dernières trames : on affiche la plus fréquente (pas de clignotement). */
+    private val recentHarmonies = ArrayDeque<Harmony?>()
+    private var shownHarmony: Harmony? = null
+
     private var settings = Settings()
     private var settingsLoaded = false
     private var lockedString = -1
@@ -93,6 +118,8 @@ class TunerViewModel(
     private var inTuneStreak = 0
     private var outOfTuneStreak = 0
     private var toneJob: Job? = null
+    private var page = Page.TUNER
+    private var takeStartedAt = 0L
 
     /** Changer de source relance la capture (arrêt ≤ 43 ms) : hors du fil principal, dans l'ordre. */
     private val engineDispatcher = Dispatchers.Default.limitedParallelism(1)
@@ -111,6 +138,37 @@ class TunerViewModel(
     fun stop() {
         stopReferenceTone()
         engine.stop()
+    }
+
+    /** Page affichée : quitter l'accordeur termine la prise en cours ; le spectre a sa propre analyse. */
+    fun setPage(page: Page) {
+        this.page = page
+        if (page != Page.TUNER) stopRecording()
+        val spectrum = page == Page.SPECTRUM
+        if (spectrum != engine.spectrum) {
+            engine.spectrum = spectrum
+            recentHarmonies.clear()
+            shownHarmony = null
+            _spectrumState.value = SpectrumUiState()
+        }
+    }
+
+    // --- Prises de test (bouton ●) --------------------------------------------------------
+
+    fun toggleRecording() {
+        if (engine.recorder.armed) stopRecording() else startRecording()
+    }
+
+    private fun startRecording() {
+        if (!settings.recordBank || page != Page.TUNER) return
+        takeStartedAt = System.nanoTime()
+        engine.recorder.startTake()
+        _uiState.update { it.copy(recording = true, recordingSeconds = 0) }
+    }
+
+    fun stopRecording() {
+        engine.recorder.stopTake()
+        _uiState.update { it.copy(recording = false, recordingSeconds = 0) }
     }
 
     override fun onCleared() {
@@ -252,6 +310,7 @@ class TunerViewModel(
             lockedString = -1
         }
         if (lockedString >= new.tuning.stringCount) lockedString = -1
+        if (!new.recordBank) stopRecording()
         settingsLoaded = true
         pushTargets()
         if (engine.source != new.micSource) {
@@ -269,6 +328,11 @@ class TunerViewModel(
     }
 
     private fun onFrame(frame: TunerFrame?) {
+        val spectrum = frame?.spectrum
+        if (frame != null && spectrum != null) {
+            onSpectrumFrame(frame, spectrum)
+            return
+        }
         if (frame == null) {
             resetStreak()
             _uiState.update {
@@ -279,10 +343,13 @@ class TunerViewModel(
             }
             return
         }
-        val recording = settings.recordBank && engine.recorder.recording
+        // Prise terminée d'elle-même (durée maximale) : le bouton revient au repos.
+        val recording = engine.recorder.armed
+        val seconds = if (recording) ((System.nanoTime() - takeStartedAt) / 1_000_000_000L).toInt() else 0
+        _uiState.update { it.copy(recording = recording, recordingSeconds = seconds) }
         val level = ((frame.levelDb - LEVEL_FLOOR_DB) / LEVEL_RANGE_DB).toFloat().coerceIn(0f, 1f)
         if (settings.tunerMode == TunerMode.POLY) {
-            onPolyFrame(frame, level, recording)
+            onPolyFrame(frame, level)
             return
         }
         if (!frame.hasPitch) {
@@ -290,7 +357,7 @@ class TunerViewModel(
             _uiState.update {
                 it.copy(
                     signal = frame.signal, level = level, note = null, frequency = null, cents = null,
-                    holding = false, activeString = lockedString, poly = null, recording = recording,
+                    holding = false, activeString = lockedString, poly = null,
                 )
             }
             return
@@ -327,12 +394,28 @@ class TunerViewModel(
                 tunedStrings = tunedStrings,
                 tunedEvents = tunedEvents,
                 poly = null,
-                recording = recording,
             )
         }
     }
 
-    private fun onPolyFrame(frame: TunerFrame, level: Float, recording: Boolean) {
+    /** Page Spectre : l'harmonie affichée est celle qui domine sur les ~0,35 dernières secondes. */
+    private fun onSpectrumFrame(frame: TunerFrame, spectrum: SpectrumFrame) {
+        val current = Harmony.of(spectrum.notes.map { Note.fromMidi(it.midi) })
+        recentHarmonies.addLast(current)
+        while (recentHarmonies.size > VOTE_FRAMES) recentHarmonies.removeFirst()
+        val counts = HashMap<String, Int>()
+        for (h in recentHarmonies) if (h != null) counts[h.key] = (counts[h.key] ?: 0) + 1
+        val best = counts.maxByOrNull { it.value }
+        if (best != null && best.value >= VOTE_MIN) shownHarmony = recentHarmonies.last { it?.key == best.key }
+        _spectrumState.value = SpectrumUiState(
+            frame = spectrum,
+            harmony = shownHarmony,
+            holding = current == null,
+            signal = frame.signal,
+        )
+    }
+
+    private fun onPolyFrame(frame: TunerFrame, level: Float) {
         val poly = frame.poly
         if (poly != null && poly.strings.size == settings.tuning.stringCount) {
             val tolerance = settings.toleranceCents
@@ -347,7 +430,7 @@ class TunerViewModel(
         _uiState.update {
             it.copy(
                 signal = frame.signal, level = level, note = null, frequency = null, cents = null,
-                holding = false, activeString = -1, tunedStrings = tunedStrings, poly = poly, recording = recording,
+                holding = false, activeString = -1, tunedStrings = tunedStrings, poly = poly,
             )
         }
     }
@@ -423,6 +506,10 @@ class TunerViewModel(
 
         /** ~0,35 s à 23 analyses/s. */
         const val STREAK_FRAMES = 8
+
+        /** Vote sur les 8 dernières trames (~0,35 s) ; au moins 3 voix pour changer d'harmonie. */
+        const val VOTE_FRAMES = 8
+        const val VOTE_MIN = 3
         const val TONE_ECHO_MS = 400L
         const val LEVEL_FLOOR_DB = -100.0
         const val LEVEL_RANGE_DB = 70.0

@@ -482,6 +482,10 @@ class PitchDetector(
             if (count == 1) fitF0 = peakFrequency[j] / h else fit(count)
         }
 
+        // 2 bis. Raideur : les ancres, toutes graves, la fixent mal (un partiel décalé de 1 Hz par
+        //        un ronflement voisin suffit à la fausser) ; on la choisit sur une grille.
+        if (MAX_PARTIAL_HZ / fitF0 >= STIFFNESS_MIN_HARMONICS) chooseStiffness(count)
+
         // 3. Extension à toutes les harmoniques avec le modèle ancré.
         var h = 1
         while (h <= MAX_HARMONIC) {
@@ -498,6 +502,13 @@ class PitchDetector(
             h++
         }
         fit(count)
+        // Un partiel resté loin du modèle final (apparié avant que la raideur soit connue) ne
+        // doit pas le tirer : on l'écarte et on réajuste.
+        val kept = pruneOutliers(count)
+        if (kept != count) {
+            count = kept
+            fit(count)
+        }
 
         // Seuls les partiels proches du modèle final comptent (pas de rapprochement fortuit) ;
         // chacun explique l'énergie de son lobe principal (±2 bins de la fenêtre).
@@ -547,19 +558,92 @@ class PitchDetector(
         return abs(peakFrequency[peak] - predicted) <= tolerance
     }
 
-    /** Pic le plus proche de [hz] à [tolerance] près ; −1 si aucun. */
+    /** Pic le plus proche de [hz] à [tolerance] près ; −1 si aucun (pics triés par fréquence). */
     private fun nearestPeak(hz: Double, tolerance: Double): Int {
+        // Premier pic ≥ hz − tolerance (recherche dichotomique).
+        var lo = 0
+        var hi = peakCount
+        val from = hz - tolerance
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (peakFrequency[mid] < from) lo = mid + 1 else hi = mid
+        }
         var best = -1
         var bestDistance = tolerance
-        for (i in 0 until peakCount) {
+        var i = lo
+        while (i < peakCount) {
             val d = peakFrequency[i] - hz
             if (d > tolerance) break
             if (abs(d) <= bestDistance) {
                 bestDistance = abs(d)
                 best = i
             }
+            i++
         }
         return best
+    }
+
+    /**
+     * Choisit la raideur B de départ de l'extension : pour chaque B de la grille (et celui des
+     * ancres), f0 est réajusté sur les ancres, puis on compte les partiels du spectre qui tombent
+     * sur la série prédite, pondérés par leur netteté (log du rapport au bruit). Les partiels
+     * aigus, très étirés, départagent les valeurs de B que les ancres graves ne distinguent pas.
+     */
+    private fun chooseStiffness(count: Int) {
+        var bestB = fitB
+        var bestF0 = fitF0
+        var bestScore = stiffnessScore(fitF0, fitB)
+        for (b in STIFFNESS_GRID) {
+            var num = 0.0
+            var den = 0.0
+            for (i in 0 until count) {
+                val j = matchPeak[i]
+                val h = matchHarmonic[i].toDouble()
+                val ratio = peakFrequency[j] / h
+                val snr = min(peakSnr[j], MAX_SNR)
+                val w = h * h * snr * snr
+                num += w * ratio * ratio / (1.0 + b * h * h)
+                den += w
+            }
+            if (den <= 0.0) continue
+            val f0 = sqrt(num / den)
+            val score = stiffnessScore(f0, b)
+            if (score > bestScore + STIFFNESS_SCORE_MARGIN) {
+                bestScore = score
+                bestB = b
+                bestF0 = f0
+            }
+        }
+        fitF0 = bestF0
+        fitB = bestB
+    }
+
+    private fun stiffnessScore(f0: Double, b: Double): Double {
+        var score = 0.0
+        var h = 1
+        while (h <= MAX_HARMONIC) {
+            val predicted = h * f0 * sqrt(1.0 + b * h * h)
+            if (predicted > MAX_PARTIAL_HZ) break
+            val j = nearestPeak(predicted, max(TIGHT_BINS * binHz, TIGHT_RELATIVE * predicted))
+            if (j >= 0) score += ln(1.0 + min(peakSnr[j], MAX_SNR))
+            h++
+        }
+        return score
+    }
+
+    /** Retire les partiels hors tolérance du modèle ajusté ; renvoie le nombre restant. */
+    private fun pruneOutliers(count: Int): Int {
+        var kept = 0
+        for (i in 0 until count) {
+            val harmonic = matchHarmonic[i]
+            val j = matchPeak[i]
+            val predicted = harmonic * fitF0 * sqrt(1.0 + fitB * harmonic * harmonic)
+            if (abs(peakFrequency[j] - predicted) > max(TIGHT_BINS * binHz, TIGHT_RELATIVE * predicted)) continue
+            matchHarmonic[kept] = harmonic
+            matchPeak[kept] = j
+            kept++
+        }
+        return if (kept >= 2) kept else count
     }
 
     /**
@@ -700,5 +784,14 @@ class PitchDetector(
         private const val SINGLE_PARTIAL_CLARITY = 0.8
         private val SINGLE_PARTIAL_AGREEMENT = ln(2.0) / 24.0 // ½ demi-ton
         private const val MAX_INHARMONICITY = 0.002
+
+        /** Grille de raideurs essayées avant l'extension (cordes filées : 1e-4…1e-3). */
+        private val STIFFNESS_GRID = doubleArrayOf(
+            0.0, 5e-5, 1e-4, 1.5e-4, 2e-4, 3e-4, 4e-4, 5e-4, 6.5e-4, 8e-4, 1e-3, 1.25e-3, 1.6e-3, 2e-3,
+        )
+
+        /** En dessous de ce nombre d'harmoniques dans la bande, l'étirement est négligeable. */
+        private const val STIFFNESS_MIN_HARMONICS = 10.0
+        private const val STIFFNESS_SCORE_MARGIN = 1e-9
     }
 }

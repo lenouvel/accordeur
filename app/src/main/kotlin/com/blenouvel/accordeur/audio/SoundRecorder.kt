@@ -38,13 +38,16 @@ data class RecordingContext(
 )
 
 /**
- * Banque de sons de test : pendant l'écoute, chaque son joué est gardé **tel que le micro l'a livré**
- * (avant tout filtrage), sans perte — WAV float 32 bits, ou 16 bits si le téléphone ne fournit que
- * du 16 bits — avec une fiche texte (téléphone, source, réglages) et ce que l'accordeur a affiché à
- * chaque trame. De quoi rejouer la banque dans l'accordeur sur ordinateur (test de non-régression).
+ * Banque de sons de test : une **prise** commence quand on appuie sur le bouton ● de l'accordeur et
+ * finit au second appui (ou en quittant l'accordeur, ou au bout de [MAX_TAKE_S]). Tout ce que le
+ * micro livre pendant la prise est gardé **tel quel** (avant tout filtrage, silences compris), sans
+ * perte — WAV float 32 bits, ou 16 bits si le téléphone ne fournit que du 16 bits — avec une fiche
+ * texte (téléphone, source, réglages) et ce que l'accordeur a affiché à chaque trame. De quoi
+ * rejouer la banque dans l'accordeur sur ordinateur (test de non-régression).
  *
- * Économe : seules les périodes de son sont gardées (gate ouvert), avec 1 s avant (le rejeu
- * apprend le bruit de fond et voit l'attaque entière) et 1 s après ; un son dure au plus 2 min.
+ * La prise démarre ~1 s avant l'appui (pré-enregistrement glissant, en mémoire seulement : une
+ * corde pincée juste avant l'appui est gardée entière). Changer de réglage pendant une prise la
+ * coupe en deux fichiers (chaque fiche reste juste) ; le son de référence n'est pas gardé.
  * Le fil audio ne fait que copier chaque bloc dans un tampon recyclé (aucune allocation, aucune
  * écriture disque) ; un fil d'écriture dédié fait le reste. La banque est plafonnée à
  * [maxBytes] : les sons les plus anciens partent d'abord.
@@ -52,10 +55,20 @@ data class RecordingContext(
 class SoundRecorder(
     private val directory: File,
     private val maxBytes: Long = MAX_BANK_BYTES,
+    private val maxTakeSeconds: Double = MAX_TAKE_S,
 ) {
-    /** Enregistrement voulu (réglage) : lu par le fil audio. */
+    /** Fonction activée (réglage « bouton d'enregistrement ») : sinon rien ne quitte le fil audio. */
     @Volatile
     var enabled = false
+
+    /** Prise demandée (bouton ●). Remis à faux en fin de capture ou au bout de [maxTakeSeconds]. */
+    @Volatile
+    var armed = false
+        private set
+
+    /** Numéro de la prise en cours (ou de la dernière). */
+    @Volatile
+    private var take = 0
 
     /** Réglages courants ; un changement ferme le son en cours (la fiche resterait fausse). */
     @Volatile
@@ -65,10 +78,21 @@ class SoundRecorder(
     @Volatile
     var onBankChanged: (() -> Unit)? = null
 
-    /** Vrai pendant qu'un son est en cours d'enregistrement (indicateur à l'écran). */
+    /** Vrai pendant qu'un fichier de la prise est ouvert. */
     @Volatile
     var recording = false
         private set
+
+    /** Lance une prise (bouton ●). */
+    fun startTake() {
+        take++
+        armed = true
+    }
+
+    /** Termine la prise en cours (bouton ■, sortie de l'accordeur). */
+    fun stopTake() {
+        armed = false
+    }
 
     private class Chunk(size: Int) {
         val samples = FloatArray(size)
@@ -77,6 +101,8 @@ class SoundRecorder(
         var frame: TunerFrame? = null
         var muted = false
         var context: RecordingContext? = null
+        var armed = false
+        var take = 0
 
         /** Bloc spécial : fin de capture, ou enregistrement désactivé. */
         var close = false
@@ -140,12 +166,15 @@ class SoundRecorder(
         chunk.frame = frame
         chunk.muted = muted
         chunk.context = context
+        chunk.armed = armed
+        chunk.take = take
         chunk.close = false
         queue.offer(chunk)
     }
 
-    /** Fin de capture (fil audio) : termine le son en cours et attend le fil d'écriture. */
+    /** Fin de capture (fil audio) : termine la prise en cours et attend le fil d'écriture. */
     fun stop() {
+        armed = false
         val thread = writer ?: return
         writer = null
         sendClose(final = true)
@@ -170,6 +199,9 @@ class SoundRecorder(
     private val preroll = ArrayDeque<Chunk>()
     private var clip: ClipWriter? = null
 
+    /** Prise arrêtée par la limite de durée : ses blocs encore en file ne la rouvrent pas. */
+    private var endedTake = -1
+
     private fun writeLoop(format: CaptureFormat) {
         try {
             while (true) {
@@ -191,7 +223,7 @@ class SoundRecorder(
             Thread.currentThread().interrupt()
         } finally {
             closeClip()
-            while (preroll.isNotEmpty()) recycle(preroll.removeFirst())
+            clearPreroll()
             recording = false
         }
     }
@@ -199,34 +231,44 @@ class SoundRecorder(
     private fun handle(chunk: Chunk, format: CaptureFormat) {
         if (chunk.close) {
             closeClip()
-            while (preroll.isNotEmpty()) recycle(preroll.removeFirst())
+            clearPreroll()
             recycle(chunk)
             return
         }
+        val context = chunk.context
+        val wanted = chunk.armed && !chunk.muted && context != null && chunk.take != endedTake
         val open = clip
         if (open != null) {
             val continuous = chunk.firstSample == open.nextSample
-            if (!continuous || chunk.muted || chunk.context != open.context || open.seconds >= MAX_CLIP_S) {
+            if (!wanted || !continuous || context != open.context || chunk.take != open.take) {
+                // Fin de prise, bloc perdu ou réglage changé (la prise continue dans un autre fichier).
                 closeClip()
+            } else if (open.seconds >= maxTakeSeconds) {
+                closeClip()
+                endedTake = open.take
+                if (take == open.take) armed = false
             }
         }
         val current = clip
         if (current != null) {
             current.append(chunk)
             recycle(chunk)
-            if (current.silentFor() >= POSTROLL_S) closeClip()
             return
         }
-        // Pas de son en cours : pré-enregistrement glissant, ouverture dès qu'un son est entendu.
-        val last = preroll.lastOrNull()
-        if (last != null && chunk.firstSample != last.firstSample + last.count) {
-            while (preroll.isNotEmpty()) recycle(preroll.removeFirst()) // bloc perdu : pré-roll rompu
+        if (chunk.muted) {
+            // Son de référence : ni gardé, ni en pré-enregistrement.
+            clearPreroll()
+            recycle(chunk)
+            return
         }
+        // Hors prise : pré-enregistrement glissant (~1 s), ouverture dès que la prise est demandée.
+        val last = preroll.lastOrNull()
+        if (last != null && chunk.firstSample != last.firstSample + last.count) clearPreroll() // bloc perdu
         preroll.addLast(chunk)
         while (preroll.size > PREROLL_CHUNKS) recycle(preroll.removeFirst())
-        val context = chunk.context
-        if (chunk.frame?.signal == true && !chunk.muted && context != null) {
-            val writer = ClipWriter(format, context, preroll.first().firstSample, droppedChunks)
+        if (wanted && chunk.take != endedTake && context != null) {
+            val first = preroll.first().firstSample
+            val writer = ClipWriter(format, context, chunk.take, first, chunk.firstSample - first, droppedChunks)
             clip = writer
             recording = true
             while (preroll.isNotEmpty()) {
@@ -235,6 +277,10 @@ class SoundRecorder(
                 recycle(c)
             }
         }
+    }
+
+    private fun clearPreroll() {
+        while (preroll.isNotEmpty()) recycle(preroll.removeFirst())
     }
 
     private fun recycle(chunk: Chunk) {
@@ -272,7 +318,9 @@ class SoundRecorder(
     private inner class ClipWriter(
         private val format: CaptureFormat,
         val context: RecordingContext,
+        val take: Int,
         private val firstSample: Long,
+        private val prerollSamples: Long,
         private val droppedAtStart: Int,
     ) {
         private val name: String
@@ -286,7 +334,6 @@ class SoundRecorder(
         var nextSample = firstSample
             private set
         private var samples = 0L
-        private var lastSignalSample = firstSample
 
         val seconds: Double get() = samples.toDouble() / format.sampleRate
 
@@ -307,7 +354,6 @@ class SoundRecorder(
         fun append(chunk: Chunk) {
             nextSample = chunk.firstSample + chunk.count
             val frame = chunk.frame
-            if (frame != null && frame.signal) lastSignalSample = nextSample
             if (failed) return
             buffer.clear()
             if (format.floatSamples) {
@@ -326,9 +372,6 @@ class SoundRecorder(
             samples += chunk.count
             if (frame != null) logFrame(frame)
         }
-
-        /** Durée depuis le dernier bloc où un son était entendu (s). */
-        fun silentFor(): Double = (nextSample - lastSignalSample).toDouble() / format.sampleRate
 
         private fun logFrame(frame: TunerFrame) {
             val t = frame.timeSeconds - firstSample.toDouble() / format.sampleRate
@@ -375,8 +418,9 @@ class SoundRecorder(
         private fun writeSheet(droppedNow: Int) {
             val date = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).format(Date(startedAt))
             val sheet = buildString {
-                append("# Accordeur — banque de sons de test. Signal brut du micro (avant tout filtrage),\n")
-                append("# puis ce que l'accordeur a affiché à chaque trame (~43 ms).\n")
+                append("# Accordeur — banque de sons de test. Prise lancée au bouton : signal brut du micro\n")
+                append("# (avant tout filtrage, silences compris), puis ce que l'accordeur a affiché à chaque\n")
+                append("# trame (~43 ms).\n")
                 append("format=").append(SHEET_FORMAT).append('\n')
                 append("fichier=").append(name).append(".wav\n")
                 append("date=").append(date).append('\n')
@@ -389,7 +433,8 @@ class SoundRecorder(
                 append("frequence=").append(format.sampleRate).append('\n')
                 append("encodage=").append(if (format.floatSamples) "float32" else "pcm16").append('\n')
                 append("duree_s=").append(String.format(Locale.ROOT, "%.3f", seconds)).append('\n')
-                append("preroll_s=").append(String.format(Locale.ROOT, "%.3f", PREROLL_CHUNKS * PitchDetector.HOP.toDouble() / format.sampleRate)).append('\n')
+                append("prise=").append(take).append('\n')
+                append("preroll_s=").append(String.format(Locale.ROOT, "%.3f", prerollSamples.toDouble() / format.sampleRate)).append('\n')
                 append("premier_echantillon=").append(firstSample).append('\n')
                 append("mode=").append(context.mode.name).append('\n')
                 append("detection=").append(context.detection).append('\n')
@@ -430,17 +475,20 @@ class SoundRecorder(
 
         /** Plafond de la banque : ~90 min de son en float 48 kHz. */
         const val MAX_BANK_BYTES = 1L shl 30
-        const val SHEET_FORMAT = 1
+
+        /** 2 : prises au bouton (continues). 1 : sons découpés automatiquement (versions précédentes). */
+        const val SHEET_FORMAT = 2
         const val FLOAT_HEADER = 58
         const val PCM_HEADER = 44
 
         /** ~5,5 s de tampon entre le fil audio et le fil d'écriture. */
         private const val POOL_SIZE = 128
 
-        /** ~1 s avant le début du son. */
+        /** ~1 s avant l'appui sur ●. */
         private const val PREROLL_CHUNKS = 24
-        private const val POSTROLL_S = 1.0
-        private const val MAX_CLIP_S = 120.0
+
+        /** Une prise oubliée s'arrête seule (~55 Mo en float 48 kHz). */
+        const val MAX_TAKE_S = 300.0
         private const val STOP_TIMEOUT_MS = 2000L
 
         private fun safe(text: String): String = text.replace(Regex("[^A-Za-z0-9_-]"), "")

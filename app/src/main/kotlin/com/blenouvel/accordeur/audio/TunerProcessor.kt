@@ -36,6 +36,8 @@ data class TunerFrame(
     val holding: Boolean,
     /** Tableau des cordes en mode poly (maintenu entre les attaques), sinon null. */
     val poly: PolyReading?,
+    /** Spectre et notes entendues (page Spectre), sinon null. */
+    val spectrum: SpectrumFrame? = null,
 ) {
     val hasPitch: Boolean get() = !frequency.isNaN()
 }
@@ -43,7 +45,8 @@ data class TunerFrame(
 /**
  * Chaîne de traitement complète, indépendante d'Android (testable sur JVM) :
  * pré-filtrage continu → tampon circulaire → toutes les [PitchDetector.HOP] trames, analyse de la
- * dernière fenêtre (série de partiels en mono, [PolyTracker] en poly) → stabilisation.
+ * dernière fenêtre (série de partiels en mono, [PolyTracker] en poly) → stabilisation. Pour la
+ * page Spectre, le signal brut (non filtré) passe à la place dans le [SpectrumAnalyzer].
  *
  * [process] est appelé par le thread audio ; les champs de configuration peuvent être modifiés
  * depuis un autre thread. Tampons préalloués : pas d'allocation dans la boucle échantillon.
@@ -58,6 +61,10 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
     /** Analyse suspendue (ex. pendant la lecture du son de référence). */
     @Volatile
     var muted: Boolean = false
+
+    /** Page Spectre : spectre du signal brut et notes entendues, pas d'accordage. */
+    @Volatile
+    var spectrum: Boolean = false
 
     private val preprocessor = Preprocessor(sampleRate)
 
@@ -78,6 +85,12 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
     private val stabilizer = PitchStabilizer()
     private val polyTracker = PolyTracker(sampleRate)
 
+    // Page Spectre : signal brut (pas de filtrage), analyseur créé à la première utilisation.
+    private val rawRing = FloatArray(RING_SIZE)
+    private var spectrumAnalyzer: SpectrumAnalyzer? = null
+    private var spectrumWindow: FloatArray? = null
+    private var spectrumActive = false
+
     private var hopFill = 0
     private var hopEnergy = 0.0
     private var hopIndex = 0L
@@ -94,6 +107,7 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
             val a = attackFilter.process(x)
             attackEnergy += a * a
             val y = preprocessor.process(x)
+            rawRing[(written and RING_MASK).toInt()] = input[i]
             ring[(written and RING_MASK).toInt()] = y
             written++
             hopEnergy += y * y
@@ -124,6 +138,8 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
         polyTracker.reset()
         polyActive = false
         lastPolyHop = Long.MIN_VALUE / 2
+        spectrumActive = false
+        java.util.Arrays.fill(rawRing, 0f)
     }
 
     private fun analyze(hopMeanSquare: Double, attackMeanSquare: Double): TunerFrame {
@@ -141,6 +157,8 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
         stabilizer.updateLevel(levelDb, toDb(hopMeanSquare), time)
         val attack = attackOnset(toDb(attackMeanSquare), time)
         val currentTargets = targets
+        if (spectrum) return analyzeSpectrum(time, levelDb, currentTargets)
+        spectrumActive = false
         val poly: PolyReading?
         if (mode == TunerMode.MONO) {
             polyActive = false
@@ -167,6 +185,31 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
             holding = stabilizer.holding,
             poly = poly,
         )
+    }
+
+    /** Page Spectre : analyse du signal brut ; notes cherchées dès la corde la plus grave (− 1 ton). */
+    private fun analyzeSpectrum(time: Double, levelDb: Double, targets: TunerTargets): TunerFrame {
+        val analyzer = spectrumAnalyzer ?: SpectrumAnalyzer(sampleRate).also { spectrumAnalyzer = it }
+        val window = spectrumWindow ?: FloatArray(SpectrumAnalyzer.WINDOW).also { spectrumWindow = it }
+        if (!spectrumActive) {
+            spectrumActive = true
+            analyzer.reset()
+        }
+        var lowest = Double.MAX_VALUE
+        for (hz in targets.stringsHz) if (hz < lowest) lowest = hz
+        analyzer.lowestNoteHz = if (lowest == Double.MAX_VALUE) {
+            SpectrumAnalyzer.DEFAULT_LOWEST_NOTE_HZ
+        } else {
+            lowest * LOWEST_NOTE_MARGIN
+        }
+        val start = written - window.size
+        for (i in window.indices) {
+            val index = start + i
+            window[i] = if (index < 0) 0f else rawRing[(index and RING_MASK).toInt()]
+        }
+        stabilizer.updatePitch(null, time, 0.0, targets.stringsHz)
+        val gate = stabilizer.gateOpen
+        return TunerFrame(time, levelDb, gate, Double.NaN, Double.NaN, 0.0, false, null, analyzer.analyze(window, gate))
     }
 
     /**
@@ -236,5 +279,8 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
         private const val ATTACK_HISTORY = 12
         private const val ATTACK_JUMP_DB = 6.0
         private const val ATTACK_REFRACTORY_S = 0.25
+
+        /** Un ton sous la corde la plus grave : 2^(−2/12). */
+        private const val LOWEST_NOTE_MARGIN = 0.8908987181403393
     }
 }
