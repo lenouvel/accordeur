@@ -40,6 +40,7 @@
 
     <!-- Choix de l'accordage -->
     <string name="tuning_sheet_title">Accordage</string>
+    <string name="section_recent">Récents</string>
     <string name="section_six_strings">6 cordes</string>
     <string name="section_seven_strings">7 cordes</string>
     <string name="section_other">Autres</string>

@@ -227,6 +227,7 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
         TuningSheet(
             current = state.tuning,
             customTunings = state.settings.customTunings,
+            recentTuningIds = state.settings.recentTuningIds,
             notation = state.settings.notation,
             onSelect = viewModel::selectTuning,
             onSave = viewModel::saveCustomTuning,

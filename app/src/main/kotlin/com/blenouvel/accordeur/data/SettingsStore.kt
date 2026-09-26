@@ -51,6 +51,8 @@ data class Settings(
     val recordBank: Boolean = true,
     val tuningId: String = Presets.DEFAULT.id,
     val customTunings: List<Tuning> = emptyList(),
+    /** Derniers accordages choisis (identifiants, du plus récent au plus ancien). */
+    val recentTuningIds: List<String> = emptyList(),
     /** Vue « Gammes » : fondamentale (classe de hauteur 0 = Do), gamme, cases, étiquettes, gaucher. */
     val scaleRoot: Int = 0,
     val scaleId: String = ScaleCatalog.DEFAULT.id,
@@ -107,7 +109,15 @@ class SettingsStore(context: Context) {
 
     suspend fun setRecordBank(value: Boolean) = edit { it[RECORD_BANK] = value }
 
-    suspend fun selectTuning(id: String) = edit { it[TUNING_ID] = id }
+    suspend fun selectTuning(id: String) = edit { prefs ->
+        prefs[TUNING_ID] = id
+        prefs[RECENT_TUNINGS] = pushRecent(prefs[RECENT_TUNINGS], id)
+    }
+
+    /** Ajoute [id] en tête des récents (sans doublon), plafonné à [RECENT_MAX]. */
+    private fun pushRecent(current: String?, id: String): String =
+        (listOf(id) + (current?.split(',') ?: emptyList()))
+            .map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(RECENT_MAX).joinToString(",")
 
     suspend fun setScaleRoot(pitchClass: Int) = edit { it[SCALE_ROOT] = pitchClass.mod(12) }
 
@@ -129,11 +139,14 @@ class SettingsStore(context: Context) {
         }
         prefs[CUSTOM_TUNINGS] = CustomTuningCodec.encode(updated)
         prefs[TUNING_ID] = tuning.id
+        prefs[RECENT_TUNINGS] = pushRecent(prefs[RECENT_TUNINGS], tuning.id)
     }
 
     suspend fun deleteCustomTuning(id: String) = edit { prefs ->
         val remaining = CustomTuningCodec.decode(prefs[CUSTOM_TUNINGS]).filterNot { it.id == id }
         prefs[CUSTOM_TUNINGS] = CustomTuningCodec.encode(remaining)
+        prefs[RECENT_TUNINGS] = (prefs[RECENT_TUNINGS]?.split(',') ?: emptyList())
+            .map { it.trim() }.filter { it.isNotEmpty() && it != id }.joinToString(",")
         if (prefs[TUNING_ID] == id) prefs[TUNING_ID] = Presets.DEFAULT.id
     }
 
@@ -158,6 +171,7 @@ class SettingsStore(context: Context) {
             recordBank = this[RECORD_BANK] ?: defaults.recordBank,
             tuningId = this[TUNING_ID] ?: defaults.tuningId,
             customTunings = CustomTuningCodec.decode(this[CUSTOM_TUNINGS]),
+            recentTuningIds = this[RECENT_TUNINGS]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: defaults.recentTuningIds,
             scaleRoot = (this[SCALE_ROOT] ?: defaults.scaleRoot).mod(12),
             scaleId = ScaleCatalog.byId(this[SCALE_ID]).id,
             scaleFrets = this[SCALE_FRETS]?.takeIf { it in FretboardMap.FRET_COUNTS } ?: defaults.scaleFrets,
@@ -185,6 +199,8 @@ class SettingsStore(context: Context) {
         val RECORD_BANK = booleanPreferencesKey("record_bank")
         val TUNING_ID = stringPreferencesKey("tuning_id")
         val CUSTOM_TUNINGS = stringPreferencesKey("custom_tunings")
+        val RECENT_TUNINGS = stringPreferencesKey("recent_tunings")
+        const val RECENT_MAX = 5
         val SCALE_ROOT = intPreferencesKey("scale_root")
         val SCALE_ID = stringPreferencesKey("scale_id")
         val SCALE_FRETS = intPreferencesKey("scale_frets")

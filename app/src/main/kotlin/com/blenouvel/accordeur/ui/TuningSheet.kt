@@ -67,6 +67,7 @@ private data class EditorRequest(val id: String?, val name: String, val notes: L
 fun TuningSheet(
     current: Tuning,
     customTunings: List<Tuning>,
+    recentTuningIds: List<String>,
     notation: Notation,
     onSelect: (String) -> Unit,
     onSave: (id: String?, name: String, notes: List<Note>) -> Unit,
@@ -83,6 +84,7 @@ fun TuningSheet(
             TuningList(
                 current = current,
                 customTunings = customTunings,
+                recentTuningIds = recentTuningIds,
                 notation = notation,
                 onSelect = {
                     onSelect(it)
@@ -128,6 +130,7 @@ fun TuningSheet(
 private fun TuningList(
     current: Tuning,
     customTunings: List<Tuning>,
+    recentTuningIds: List<String>,
     notation: Notation,
     onSelect: (String) -> Unit,
     onCreate: () -> Unit,
@@ -137,6 +140,8 @@ private fun TuningList(
     val six = Presets.all.filter { it.stringCount == 6 }
     val seven = Presets.all.filter { it.stringCount == 7 }
     val others = Presets.all.filter { it.stringCount != 6 && it.stringCount != 7 }
+    // Derniers accordages choisis, en tête pour éviter de faire défiler (accordage supprimé ignoré).
+    val recent = recentTuningIds.mapNotNull { id -> customTunings.firstOrNull { it.id == id } ?: Presets.byId(id) }
     LazyColumn(
         contentPadding = PaddingValues(bottom = 24.dp),
         modifier = Modifier.navigationBarsPadding(),
@@ -147,6 +152,9 @@ private fun TuningList(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
+        }
+        if (recent.size >= 2) {
+            section(R.string.section_recent, recent, current, notation, onSelect, null, null, keyPrefix = "recent-")
         }
         section(R.string.section_six_strings, six, current, notation, onSelect, null, null)
         section(R.string.section_seven_strings, seven, current, notation, onSelect, null, null)
@@ -177,6 +185,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.section(
     onSelect: (String) -> Unit,
     onEdit: ((Tuning) -> Unit)?,
     onDelete: ((Tuning) -> Unit)?,
+    keyPrefix: String = "",
 ) {
     item(key = "title-$titleRes") {
         Text(
@@ -186,7 +195,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.section(
             modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
         )
     }
-    items(tunings, key = { it.id }) { tuning ->
+    items(tunings, key = { keyPrefix + it.id }) { tuning ->
         val selected = tuning.id == current.id
         ListItem(
             headlineContent = { Text(tuning.name, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
