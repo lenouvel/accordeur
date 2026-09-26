@@ -83,6 +83,7 @@
     <string name="settings_dynamic_color">Couleurs dynamiques (Material You)</string>
     <string name="settings_haptics">Vibrer quand une corde est juste</string>
     <string name="settings_keep_screen_on">Garder l\'écran allumé</string>
+    <string name="settings_spectrum_highlight">Spectre : distinguer la guitare du bruit</string>
     <string name="settings_mic_source">Source du micro</string>
     <string name="settings_mic_source_desc">Le téléphone peut filtrer les graves selon la source. Si la grosse corde passe mal, essayez-en une autre et jouez-la : le test ci-dessous montre ce qui est entendu.</string>
     <string name="mic_auto">Automatique</string>

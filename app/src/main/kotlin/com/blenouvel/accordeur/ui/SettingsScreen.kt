@@ -82,6 +82,7 @@ class SettingsActions(
     val setDynamicColor: (Boolean) -> Unit,
     val setHaptics: (Boolean) -> Unit,
     val setKeepScreenOn: (Boolean) -> Unit,
+    val setSpectrumHighlight: (Boolean) -> Unit,
     val setMicSource: (MicSource) -> Unit,
     val setRecordBank: (Boolean) -> Unit,
     val refreshBank: () -> Unit,
@@ -178,6 +179,7 @@ fun SettingsScreen(
             }
             SwitchRow(stringResource(R.string.settings_haptics), settings.haptics, actions.setHaptics)
             SwitchRow(stringResource(R.string.settings_keep_screen_on), settings.keepScreenOn, actions.setKeepScreenOn)
+            SwitchRow(stringResource(R.string.settings_spectrum_highlight), settings.spectrumHighlight, actions.setSpectrumHighlight)
             HorizontalDivider()
 
             MicSourceSetting(state, actions.setMicSource)

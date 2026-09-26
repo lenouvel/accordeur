@@ -245,6 +245,8 @@ class TunerViewModel(
     fun setDynamicColor(value: Boolean) = launchSetting { settingsStore.setDynamicColor(value) }
     fun setHaptics(value: Boolean) = launchSetting { settingsStore.setHaptics(value) }
     fun setKeepScreenOn(value: Boolean) = launchSetting { settingsStore.setKeepScreenOn(value) }
+
+    fun setSpectrumHighlight(value: Boolean) = launchSetting { settingsStore.setSpectrumHighlight(value) }
     fun setMicSource(value: MicSource) = launchSetting { settingsStore.setMicSource(value) }
     fun setRecordBank(value: Boolean) = launchSetting { settingsStore.setRecordBank(value) }
 

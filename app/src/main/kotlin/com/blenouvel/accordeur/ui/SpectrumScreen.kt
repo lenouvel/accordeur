@@ -77,6 +77,7 @@ import kotlin.math.roundToInt
 fun SpectrumScreen(
     state: SpectrumUiState,
     notation: Notation,
+    highlightGuitar: Boolean,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -96,6 +97,7 @@ fun SpectrumScreen(
                     frame = state.frame,
                     harmony = state.harmony.takeIf { !state.holding },
                     notation = notation,
+                    highlightGuitar = highlightGuitar,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(top = 8.dp),
@@ -174,6 +176,7 @@ private fun SpectrumView(
     frame: SpectrumFrame?,
     harmony: Harmony?,
     notation: Notation,
+    highlightGuitar: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val motion = remember { SpectrumMotion() }
@@ -242,8 +245,24 @@ private fun SpectrumView(
         }
         fill.lineTo(size.width, plot.bottom)
         fill.close()
-        drawPath(fill, Brush.verticalGradient(listOf(colors.primary.copy(alpha = 0.32f), colors.primary.copy(alpha = 0.03f)), plot.top, plot.bottom))
-        drawPath(path, colors.primary, style = Stroke(width = 1.5.dp.toPx()))
+        val guitar = frame?.harmonics.orEmpty()
+        if (highlightGuitar) {
+            // Courbe atténuée = tout le signal (bruit et autres sources) ; peigne d'accent sur les
+            // partiels de la guitare (la série de partiels des notes détectées) : on voit d'un coup
+            // d'œil ce qui est la corde et ce qui est du bruit.
+            val muted = colors.onSurfaceVariant
+            drawPath(fill, Brush.verticalGradient(listOf(muted.copy(alpha = 0.14f), muted.copy(alpha = 0.02f)), plot.top, plot.bottom))
+            drawPath(path, muted.copy(alpha = 0.55f), style = Stroke(width = 1.5.dp.toPx()))
+            for (p in guitar) {
+                val hx = x(p.frequency)
+                val hy = y(motion.levelAt(p.frequency))
+                drawLine(colors.primary.copy(alpha = 0.5f), Offset(hx, plot.bottom), Offset(hx, hy), 1.5.dp.toPx())
+                drawCircle(colors.primary, radius = 2.5.dp.toPx(), center = Offset(hx, hy))
+            }
+        } else {
+            drawPath(fill, Brush.verticalGradient(listOf(colors.primary.copy(alpha = 0.32f), colors.primary.copy(alpha = 0.03f)), plot.top, plot.bottom))
+            drawPath(path, colors.primary, style = Stroke(width = 1.5.dp.toPx()))
+        }
 
         // Notes entendues : étiquettes sur une ligne, écartées juste assez pour ne pas se chevaucher
         // (un accord serré tient en quelques millimètres de l'axe), trait coudé jusqu'à la note.

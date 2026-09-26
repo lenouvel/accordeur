@@ -26,6 +26,11 @@ class SpectrumFrame(
     val peaks: List<SpectrumPeak>,
     /** Notes entendues (confirmées sur plusieurs trames), de la plus grave à la plus aiguë. */
     val notes: List<HeardNote>,
+    /**
+     * Pics appartenant à la série de partiels d'une note détectée : ce qui, dans le spectre, est
+     * **la guitare** (par opposition au bruit et aux autres sources). Vide s'il n'y a pas de note.
+     */
+    val harmonics: List<SpectrumPeak> = emptyList(),
 )
 
 /**
@@ -749,7 +754,17 @@ class SpectrumAnalyzer(val sampleRate: Int) {
             }
         }
         notes.sortBy { it.frequency }
-        return SpectrumFrame(out, peaks, notes)
+
+        // Pics appartenant à une note retenue (« explained ») : la guitare. Vide s'il n'y a pas de
+        // note ce trame (tout est alors bruit / autres sources).
+        val harmonics = if (noteCount > 0) {
+            ArrayList<SpectrumPeak>().apply {
+                for (j in 0 until peakCount) if (explained[j] && peakHz[j] <= NOTE_MAX_HZ) add(SpectrumPeak(peakHz[j], peakDb[j].toFloat()))
+            }
+        } else {
+            emptyList()
+        }
+        return SpectrumFrame(out, peaks, notes, harmonics)
     }
 
     private fun midiOf(hz: Double): Int = (69.0 + 12.0 * ln(hz / 440.0) / ln(2.0)).roundToInt()

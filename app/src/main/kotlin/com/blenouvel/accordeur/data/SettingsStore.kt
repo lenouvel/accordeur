@@ -43,6 +43,8 @@ data class Settings(
     val dynamicColor: Boolean = false,
     val haptics: Boolean = true,
     val keepScreenOn: Boolean = true,
+    /** Page Spectre : mettre en évidence la guitare (série de partiels) par rapport au bruit. */
+    val spectrumHighlight: Boolean = true,
     /** Source micro (AUTO : la moins traitée disponible). */
     val micSource: MicSource = MicSource.AUTO,
     /** Banque de sons de test : garder le son brut de chaque note jouée (désactivable). */
@@ -99,6 +101,8 @@ class SettingsStore(context: Context) {
 
     suspend fun setKeepScreenOn(value: Boolean) = edit { it[KEEP_SCREEN_ON] = value }
 
+    suspend fun setSpectrumHighlight(value: Boolean) = edit { it[SPECTRUM_HIGHLIGHT] = value }
+
     suspend fun setMicSource(value: MicSource) = edit { it[MIC_SOURCE] = value.name }
 
     suspend fun setRecordBank(value: Boolean) = edit { it[RECORD_BANK] = value }
@@ -149,6 +153,7 @@ class SettingsStore(context: Context) {
             dynamicColor = this[DYNAMIC_COLOR] ?: defaults.dynamicColor,
             haptics = this[HAPTICS] ?: defaults.haptics,
             keepScreenOn = this[KEEP_SCREEN_ON] ?: defaults.keepScreenOn,
+            spectrumHighlight = this[SPECTRUM_HIGHLIGHT] ?: defaults.spectrumHighlight,
             micSource = enumOf(this[MIC_SOURCE], defaults.micSource).takeIf { it.isAvailable } ?: defaults.micSource,
             recordBank = this[RECORD_BANK] ?: defaults.recordBank,
             tuningId = this[TUNING_ID] ?: defaults.tuningId,
@@ -175,6 +180,7 @@ class SettingsStore(context: Context) {
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val HAPTICS = booleanPreferencesKey("haptics")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val SPECTRUM_HIGHLIGHT = booleanPreferencesKey("spectrum_highlight")
         val MIC_SOURCE = stringPreferencesKey("mic_source")
         val RECORD_BANK = booleanPreferencesKey("record_bank")
         val TUNING_ID = stringPreferencesKey("tuning_id")

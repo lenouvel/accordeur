@@ -154,6 +154,7 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                 setDynamicColor = viewModel::setDynamicColor,
                 setHaptics = viewModel::setHaptics,
                 setKeepScreenOn = viewModel::setKeepScreenOn,
+                setSpectrumHighlight = viewModel::setSpectrumHighlight,
                 setMicSource = viewModel::setMicSource,
                 setRecordBank = viewModel::setRecordBank,
                 refreshBank = viewModel::refreshBank,
@@ -177,6 +178,7 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                     SpectrumScreen(
                         state = spectrumState,
                         notation = state.settings.notation,
+                        highlightGuitar = state.settings.spectrumHighlight,
                         onOpenSettings = openSettings,
                     )
                 } else if (screen == Page.SCALES) {
