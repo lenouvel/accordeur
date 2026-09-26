@@ -53,6 +53,7 @@ import com.blenouvel.accordeur.audio.ReferenceTone
 import com.blenouvel.accordeur.data.SettingsStore
 import com.blenouvel.accordeur.data.SoundBank
 import com.blenouvel.accordeur.data.ThemeMode
+import com.blenouvel.accordeur.model.NoteMapper
 import com.blenouvel.accordeur.ui.AppNavigationBar
 import com.blenouvel.accordeur.ui.ScalesActions
 import com.blenouvel.accordeur.ui.ScalesScreen
@@ -131,12 +132,28 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
         screen = Page.SETTINGS
     }
 
-    // Micro actif pour l'accordeur (et ses réglages) et le spectre, au premier plan : start en
-    // onResume, stop en onPause ou en passant sur la vue Gammes.
-    if (granted && screen != Page.SCALES) {
+    val scalesState by scalesViewModel.uiState.collectAsStateWithLifecycle()
+
+    // Micro actif pour l'accordeur (et ses réglages), le spectre, et la vue Gammes en mode
+    // interactif : start en onResume, stop en onPause ou en quittant.
+    val micActive = granted && (screen != Page.SCALES || scalesState.interactive)
+    if (micActive) {
         LifecycleResumeEffect(viewModel) {
             viewModel.start()
             onPauseOrDispose { viewModel.stop() }
+        }
+    }
+    // Mode interactif Gammes : la note détectée par l'accordeur fait avancer le guide de gamme.
+    LaunchedEffect(screen, scalesState.interactive) {
+        if (screen == Page.SCALES && scalesState.interactive) {
+            viewModel.uiState.collect { s ->
+                val hz = s.frequency
+                if (s.signal && hz != null && !s.holding) {
+                    scalesViewModel.onNotePlayed(NoteMapper.nearest(hz, state.settings.a4).note.midi)
+                } else {
+                    scalesViewModel.onSilence()
+                }
+            }
         }
     }
     KeepScreenOn(state.settings.keepScreenOn)
@@ -155,6 +172,8 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                 setHaptics = viewModel::setHaptics,
                 setKeepScreenOn = viewModel::setKeepScreenOn,
                 setSpectrumHighlight = viewModel::setSpectrumHighlight,
+                setLeftHanded = viewModel::setLeftHanded,
+                setScaleFocusNearest = viewModel::setScaleFocusNearest,
                 setMicSource = viewModel::setMicSource,
                 setRecordBank = viewModel::setRecordBank,
                 refreshBank = viewModel::refreshBank,
@@ -182,7 +201,6 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                         onOpenSettings = openSettings,
                     )
                 } else if (screen == Page.SCALES) {
-                    val scalesState by scalesViewModel.uiState.collectAsStateWithLifecycle()
                     ScalesScreen(
                         state = scalesState,
                         actions = ScalesActions(
@@ -190,7 +208,7 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                             onScaleChange = scalesViewModel::setScale,
                             onFretsChange = scalesViewModel::setFrets,
                             onLabelsChange = scalesViewModel::setLabels,
-                            onLeftHandedChange = scalesViewModel::setLeftHanded,
+                            onToggleInteractive = scalesViewModel::toggleInteractive,
                             onToggleDegree = scalesViewModel::toggleDegree,
                             onPlay = scalesViewModel::play,
                             onOpenTunings = { showTunings = true },

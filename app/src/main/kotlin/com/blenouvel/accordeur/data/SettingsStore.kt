@@ -59,6 +59,8 @@ data class Settings(
     val scaleFrets: Int = FretboardMap.FRET_COUNTS.first(),
     val scaleLabels: FretLabels = FretLabels.NOTES,
     val leftHanded: Boolean = false,
+    /** Mode interactif Gammes : focus sur la case la plus proche (true) ou toutes les positions (false). */
+    val scaleFocusNearest: Boolean = false,
 ) {
     /** Accordage courant (repli sur Standard 6 cordes si l'identifiant n'existe plus). */
     val tuning: Tuning
@@ -129,6 +131,8 @@ class SettingsStore(context: Context) {
 
     suspend fun setLeftHanded(value: Boolean) = edit { it[LEFT_HANDED] = value }
 
+    suspend fun setScaleFocusNearest(value: Boolean) = edit { it[SCALE_FOCUS_NEAREST] = value }
+
     /** Ajoute ou remplace (même identifiant) un accordage personnalisé, puis le sélectionne. */
     suspend fun saveCustomTuning(tuning: Tuning) = edit { prefs ->
         val current = CustomTuningCodec.decode(prefs[CUSTOM_TUNINGS])
@@ -177,6 +181,7 @@ class SettingsStore(context: Context) {
             scaleFrets = this[SCALE_FRETS]?.takeIf { it in FretboardMap.FRET_COUNTS } ?: defaults.scaleFrets,
             scaleLabels = enumOf(this[SCALE_LABELS], defaults.scaleLabels),
             leftHanded = this[LEFT_HANDED] ?: defaults.leftHanded,
+            scaleFocusNearest = this[SCALE_FOCUS_NEAREST] ?: defaults.scaleFocusNearest,
         )
     }
 
@@ -206,5 +211,6 @@ class SettingsStore(context: Context) {
         val SCALE_FRETS = intPreferencesKey("scale_frets")
         val SCALE_LABELS = stringPreferencesKey("scale_labels")
         val LEFT_HANDED = booleanPreferencesKey("left_handed")
+        val SCALE_FOCUS_NEAREST = booleanPreferencesKey("scale_focus_nearest")
     }
 }

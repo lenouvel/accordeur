@@ -54,7 +54,7 @@ class ScalesActions(
     val onScaleChange: (String) -> Unit,
     val onFretsChange: (Int) -> Unit,
     val onLabelsChange: (FretLabels) -> Unit,
-    val onLeftHandedChange: (Boolean) -> Unit,
+    val onToggleInteractive: () -> Unit,
     val onToggleDegree: (Int) -> Unit,
     val onPlay: (midi: Int) -> Unit,
     val onOpenTunings: () -> Unit,
@@ -117,13 +117,15 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
             }
             // Notes de la gamme et degrés (toucher un degré le met en évidence).
             DegreeLegend(state, noteNames, actions.onToggleDegree)
-            // Étiquettes · gaucher · formule
+            // Étiquettes · mode interactif · formule
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LabelsSelector(settings.scaleLabels, actions.onLabelsChange)
+                val interactiveDescription = stringResource(R.string.cd_scales_interactive)
                 FilterChip(
-                    selected = settings.leftHanded,
-                    onClick = { actions.onLeftHandedChange(!settings.leftHanded) },
-                    label = { Text(stringResource(R.string.left_handed), maxLines = 1, softWrap = false) },
+                    selected = state.interactive,
+                    onClick = actions.onToggleInteractive,
+                    label = { Text(stringResource(R.string.scales_interactive), maxLines = 1, softWrap = false) },
+                    modifier = Modifier.semantics { contentDescription = interactiveDescription },
                 )
                 Text(
                     text = state.scale.formula,
@@ -144,6 +146,7 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
                     notes = state.notes,
                     degreeLabels = labels,
                     highlighted = state.highlighted,
+                    focusCells = state.focusCells,
                     leftHanded = settings.leftHanded,
                     description = stringResource(
                         R.string.fretboard_description,

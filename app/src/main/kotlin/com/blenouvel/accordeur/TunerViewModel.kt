@@ -247,6 +247,10 @@ class TunerViewModel(
     fun setKeepScreenOn(value: Boolean) = launchSetting { settingsStore.setKeepScreenOn(value) }
 
     fun setSpectrumHighlight(value: Boolean) = launchSetting { settingsStore.setSpectrumHighlight(value) }
+
+    fun setLeftHanded(value: Boolean) = launchSetting { settingsStore.setLeftHanded(value) }
+
+    fun setScaleFocusNearest(value: Boolean) = launchSetting { settingsStore.setScaleFocusNearest(value) }
     fun setMicSource(value: MicSource) = launchSetting { settingsStore.setMicSource(value) }
     fun setRecordBank(value: Boolean) = launchSetting { settingsStore.setRecordBank(value) }
 

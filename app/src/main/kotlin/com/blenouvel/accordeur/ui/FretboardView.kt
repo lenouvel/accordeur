@@ -69,6 +69,7 @@ fun FretboardView(
     notes: List<FretNote>,
     degreeLabels: List<String>,
     highlighted: Set<Int>,
+    focusCells: Set<Int> = emptySet(),
     leftHanded: Boolean,
     description: String,
     onTap: (string: Int, fret: Int) -> Unit,
@@ -226,6 +227,10 @@ fun FretboardView(
                     } else {
                         drawCircle(fill, radius, center)
                         drawLabel(layout, ink, center)
+                    }
+                    // Mode interactif : anneau marqué sur la ou les cases de la note suivante à jouer.
+                    if (note.string * 100 + note.fret in focusCells) {
+                        drawCircle(scheme.tertiary, radius + 4.dp.toPx(), center, style = Stroke(3.5.dp.toPx()))
                     }
                 }
 
