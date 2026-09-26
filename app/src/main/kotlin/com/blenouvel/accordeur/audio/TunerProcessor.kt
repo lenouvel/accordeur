@@ -165,7 +165,7 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
             // Détection tant que le gate est ouvert, ou qu'une note est établie (une corde grave qui
             // sonne encore mais faiblit sous le seuil) : le stabilisateur ne la maintient alors que
             // sur une série de partiels franche. Court-circuit (silence sans note en cours) sinon.
-            val found = (stabilizer.gateOpen || stabilizer.active) && detector.detect(window, estimate)
+            val found = (stabilizer.gateOpen || stabilizer.active) && detector.detect(window, estimate, currentTargets.lockedHz)
             stabilizer.updatePitch(
                 if (found) estimate else null,
                 time,

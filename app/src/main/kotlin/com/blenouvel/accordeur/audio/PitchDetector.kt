@@ -143,7 +143,7 @@ class PitchDetector(
      * Analyse [window] (au moins [windowSize] échantillons filtrés, du plus ancien au plus récent).
      * Renvoie true et remplit [out] si une hauteur fiable a été trouvée.
      */
-    fun detect(window: DoubleArray, out: PitchEstimate): Boolean {
+    fun detect(window: DoubleArray, out: PitchEstimate, targetHz: Double = 0.0): Boolean {
         out.reset()
         var energy = 0.0
         for (i in 0 until windowSize) {
@@ -161,12 +161,19 @@ class PitchDetector(
 
         findPeaks()
         if (peakCount > 0) {
-            collectCandidates(mpm)
+            collectCandidates(mpm, targetHz)
             var bestF0 = 0.0
             var bestB = 0.0
             var bestExplained = 0.0
             var bestPartials = 0
             var bestDensity = 0.0
+            // Meilleure série **près de la corde visée** (mode verrouillé) : on la préfère à une
+            // source plus forte ailleurs (une basse, une autre guitare qui joue d'autres notes).
+            var tgtF0 = 0.0
+            var tgtB = 0.0
+            var tgtExplained = 0.0
+            var tgtPartials = 0
+            var tgtDensity = 0.0
             // Du plus aigu au plus grave : un candidat plus grave doit expliquer nettement plus,
             // avec une série assez complète (un sous-harmonique très grave « explique » aussi des
             // sons sans rapport, mais avec beaucoup d'harmoniques manquantes).
@@ -182,6 +189,35 @@ class PitchDetector(
                     bestExplained = evalExplained
                     bestPartials = evalPartials
                     bestDensity = evalDensity
+                }
+                if (targetHz > 0.0) {
+                    val first = fitF0 * sqrt(1.0 + fitB)
+                    if (abs(ln(first / targetHz)) < TARGET_FOCUS && evalExplained > tgtExplained) {
+                        tgtF0 = fitF0
+                        tgtB = fitB
+                        tgtExplained = evalExplained
+                        tgtPartials = evalPartials
+                        tgtDensity = evalDensity
+                    }
+                }
+            }
+            // Corde visée présente (série valide près d'elle) : on l'affiche, même si une autre
+            // source explique plus d'énergie. Sinon on garde le meilleur candidat global.
+            if (targetHz > 0.0 && tgtPartials > 0) {
+                val tgtFirst = tgtF0 * sqrt(1.0 + tgtB)
+                // On sait où chercher : une série assez complète (partiels + densité) à la corde
+                // visée suffit, sans exiger qu'elle domine l'énergie de bande (une basse ou une
+                // autre guitare la dilue). Le nombre de partiels et la densité écartent une série
+                // fortuite formée par les partiels de l'interférence.
+                val valid = tgtDensity >= MIN_DENSITY &&
+                    tgtFirst in minFrequency..maxFrequency && tgtPartials >= minPartials(tgtFirst) &&
+                    (tgtPartials >= 2 || (mpm > 0.0 && abs(ln(tgtFirst / mpm)) < SINGLE_PARTIAL_AGREEMENT && mpmClarity >= SINGLE_PARTIAL_CLARITY))
+                if (valid) {
+                    bestF0 = tgtF0
+                    bestB = tgtB
+                    bestExplained = tgtExplained
+                    bestPartials = tgtPartials
+                    bestDensity = tgtDensity
                 }
             }
             val first = bestF0 * sqrt(1.0 + bestB)
@@ -384,8 +420,11 @@ class PitchDetector(
     // --- Candidats ------------------------------------------------------------------------
 
     /** Candidats f0, triés du plus aigu au plus grave, sans doublons (< 0,3 %). */
-    private fun collectCandidates(mpm: Double) {
+    private fun collectCandidates(mpm: Double, targetHz: Double) {
         candidateCount = 0
+        // La corde visée (mode verrouillé) est toujours évaluée, même si ses pics ne sont pas les
+        // plus forts (une basse ou une autre guitare domine) : sa série sera préférée si elle existe.
+        if (targetHz > 0.0) addCandidate(targetHz)
         if (mpm > 0.0) {
             addCandidate(mpm)
             addCandidate(mpm / 2.0)
@@ -783,6 +822,9 @@ class PitchDetector(
         private const val MAX_SNR = 300.0
         private const val SINGLE_PARTIAL_CLARITY = 0.8
         private val SINGLE_PARTIAL_AGREEMENT = ln(2.0) / 24.0 // ½ demi-ton
+
+        /** Fenêtre autour de la corde verrouillée où sa série est préférée (± un ton). */
+        private val TARGET_FOCUS = System.getProperty("target.focus.cents")?.toDoubleOrNull()?.let { ln(2.0) * it / 1200.0 } ?: (ln(2.0) / 6.0)
         private const val MAX_INHARMONICITY = 0.002
 
         /** Grille de raideurs essayées avant l'extension (cordes filées : 1e-4…1e-3). */

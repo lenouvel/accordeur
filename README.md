@@ -308,6 +308,19 @@ app/src/main/kotlin/com/blenouvel/accordeur/
    vrai changement de corde rouvre le gate). Sur une prise réelle d'un Ré grave (S25, corde qui
    sonne ~5 s) : trames sans note affichée **50 % → < 1 %**, sans dégrader le ronflement (note
    correcte, écart ≤ 1,5 ¢) ni le rejet du bruit pur.
+7. **Focalisation sur la corde visée** (mode Manuel, corde verrouillée) : le détecteur ne prend plus
+   simplement la hauteur la plus forte du spectre — qui peut être **une autre source** (une basse,
+   une autre guitare qui joue plus loin) — mais **préfère la série de partiels près de la corde
+   verrouillée** (± un ton) dès qu'elle est assez complète, quitte à ce qu'une source plus forte
+   explique plus d'énergie. Une autre source qui joue **d'autres notes** est ainsi ignorée ; si la
+   corde visée est introuvable (noyée), on n'affiche **rien** plutôt qu'une autre note. Mesuré au
+   banc [`InterferenceBench`](banc/kotlin/InterferenceBench.kt) (corde grave verrouillée + source
+   parasite de même niveau) : une **autre guitare** — trames à la bonne note E2 78 → 91 %, D2
+   90 → 93 % ; une **basse** — E2 36 → 62 %, D2 39 → 58 %, et surtout les trames affichant une
+   **fausse** note s'effondrent (E2 21 → 4 %, D2 23 → 2 %). Une **batterie** ne gênait déjà pas
+   (série non harmonique, ~95 %). Reste dur : une corde très grave (G♯1) sous une basse forte du
+   même registre (l'accordeur se tait alors plutôt que de se tromper). La focalisation n'agit qu'en
+   mode verrouillé : le mode auto est inchangé.
 
 ### Précision mesurée hors appareil (tests et diagnostics JVM)
 
