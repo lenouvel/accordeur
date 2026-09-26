@@ -23,3 +23,8 @@ Thumbs.db
 # Banque de sons exportée du téléphone, décompressée pour BankReplayTest (volumineuse :
 # à versionner plutôt avec Git LFS si besoin).
 testbank/
+
+# Banc de mesure (`./gradlew banc`) : échantillons téléchargés à la première exécution et
+# copies instrumentées générées par les scripts regen-*.sh.
+banc/samples/
+banc/diag/

@@ -22,3 +22,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Accordeur"
 include(":app")
+// Banc de mesure hors appareil, optionnel (`./gradlew banc`) : voir banc/build.gradle.kts.
+include(":banc")

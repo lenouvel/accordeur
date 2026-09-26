@@ -79,6 +79,33 @@ dossier par la variable d'environnement `ACCORDEUR_BANQUE`), puis :
 ACCORDEUR_BANQUE_STRICT=1 ./gradlew test --tests '*BankReplayTest*' # échoue en cas de recul
 ```
 
+## Banc de mesure (hors appareil)
+
+Le banc qui a produit les chiffres de ce README est intégré au build comme sous-projet `:banc`,
+optionnel et **hors du build normal** : `./gradlew test`, `check`, `build` et `assembleDebug` ne le
+compilent pas et ne l'exécutent pas (les bancs vivent dans un source set dédié, pas dans `test`).
+
+```sh
+./gradlew banc                                   # tous les bancs (télécharge les échantillons)
+./gradlew banc --tests '*ChordBench*'            # un banc précis
+./gradlew banc -x downloadSamples --tests '*FftBench*'   # bancs synthétiques, sans téléchargement
+./gradlew downloadSamples                         # préparer les échantillons seuls
+```
+
+Il compile le code pur de l'app (`model/` + `audio/`, sans les classes Android) et les bancs de
+[`banc/kotlin/`](banc/kotlin) (`LowStringDiag`, `StiffStringDiag`, `LowTorture`, `NoiseDiag`,
+`PolyScenario`, `ChordBench`, `FftBench`…) sur de vrais échantillons de guitare et des signaux
+synthétiques. Les **échantillons** — notes G♯1–E5 des banques FluidR3 (CC BY 3.0), MusyngKite et
+FatBoy (CC BY-SA 3.0), commit `044fab8e` épinglé — sont téléchargés dans `banc/samples/` à la
+première exécution (tâche `downloadSamples`, uniquement les fichiers manquants) ; ils ne sont pas
+versionnés (voir `.gitignore`). Dépendances de test : **JLayer** (décodage des MP3) et **JTransforms**
+(référence de `FftBench`).
+
+Les traceurs (`FrameTrace`, `GlitchDebug`, `HumTrace`, `PolyTrace`, `StiffTrace`, `OctaveDebug`) ont
+besoin des copies instrumentées du paquet `dbg` : lancer d'abord `banc/regen-detector.sh`,
+`banc/regen-spectrum.sh` et/ou `banc/regen-tracker.sh` (ils écrivent dans `banc/diag/kotlin/`, que
+`./gradlew banc` compile quand ce dossier existe). Sans lui, ces six fichiers sont exclus.
+
 ## Utilisation
 
 | Geste | Effet |
@@ -322,8 +349,8 @@ Limites assumées :
 
 | Outil / bibliothèque | Version |
 |---|---|
-| Gradle (wrapper, somme SHA-256 vérifiée) | 9.5.1 |
-| Android Gradle Plugin | 9.3.3 (Kotlin intégré, nouveau DSL) |
+| Gradle (wrapper, somme SHA-256 vérifiée) | 9.6.0 |
+| Android Gradle Plugin | 9.4.1 (Kotlin intégré, nouveau DSL) |
 | Kotlin / plugin Compose | 2.4.20 |
 | Compose BOM | 2026.09.00 (Compose 1.12.1, Material 3 1.4.0) |
 | activity-compose / lifecycle / core-ktx / datastore / coroutines | 1.13.0 / 2.11.0 / 1.19.1 / 1.2.1 / 1.11.0 |
@@ -372,10 +399,10 @@ Faites dans l'environnement de développement (sans SDK Android, Google Maven y 
 
 - compilation et exécution des 62 tests JUnit (DSP, modèle, poly, banque de sons, gammes,
   spectre et accords ; 1 ignoré, limite connue) ;
-- banc de mesure hors appareil (archivé dans [`banc/`](banc/)) : vrais échantillons de guitare
-  (soundfonts FluidR3, MusyngKite, FatBoy) passés dans des modèles de micro de téléphone, cordes
-  filées synthétiques, conditions dégradées (ronflement 50 Hz, grondement, frisage, résonances…),
-  bruits, scénarios poly, 33 accords × 9 guitares — chiffres ci-dessus ;
+- banc de mesure hors appareil (`./gradlew banc`, voir [Banc de mesure](#banc-de-mesure-hors-appareil)) :
+  vrais échantillons de guitare (soundfonts FluidR3, MusyngKite, FatBoy) passés dans des modèles de
+  micro de téléphone, cordes filées synthétiques, conditions dégradées (ronflement 50 Hz, grondement,
+  frisage, résonances…), bruits, scénarios poly, 33 accords × 9 guitares — chiffres ci-dessus ;
 - compilation de **tout** le code de l'app (UI Compose, ViewModel, AudioEngine, DataStore,
   MainActivity) contre Compose 1.12.1 / Material 3 1.4, le framework Android réel (API 37) et
   des stubs pour activity / DataStore / lifecycle / core : aucune erreur, aucun avertissement ;
@@ -410,11 +437,17 @@ Essais faits (chaîne complète, accordage G♯D♯G♯C♯F♯A♯D♯, micro d
   gate (niveau global) reste fermé tant que le ronflement domine ; grondement de pièce : 71–85 % en
   fin de note ; partiels réels s'écartant de 0,4 % du modèle de corde raide : 6 à 15 ¢ d'erreur.
 
-Pistes : **enregistrer des prises de la corde G♯ avec le bouton ●** et les rejouer
+Piste essayée puis **écartée** (par choix, on préfère la confiance de lecture) : geler le plancher
+de bruit du gate tant qu'une note est établie ouvre le gate plus loin dans la fin de note
+(`LowTorture`, colonne 4–7,5 s : ronflement −12 dB 16 → 85 %, « tout ensemble » 0 → 65 %), sans
+toucher à la note claire ni au rejet du bruit pur ; **mais** ces lectures supplémentaires, dans une
+fin de note noyée dans le 50 Hz, sont fausses de −5 à −10 ¢ (le ronflement domine les partiels). On
+préfère alors ne rien afficher que d'afficher un peu faux : la piste n'est pas retenue.
+
+Pistes restantes : **enregistrer des prises de la corde G♯ avec le bouton ●** et les rejouer
 (`BankReplayTest`), c'est le plus sûr pour trouver la vraie cause ; empreinte spectrale du bruit
-apprise dans les silences (ronflement, ventilation) retirée des pics et du gate ; gate sur
-l'excédent spectral plutôt que sur le niveau global ; ne pas laisser monter le bruit de fond
-estimé tant qu'une note est suivie ; comparer les sources micro du S25 avec le test en direct.
+apprise dans les silences (ronflement, ventilation) retirée des pics et du gate ; comparer les
+sources micro du S25 avec le test en direct.
 
 ### Page Spectre : limites connues
 
@@ -427,19 +460,13 @@ estimé tant qu'une note est suivie ; comparer les sources micro du S25 avec le 
   sont très faibles.
 - Pistes : bouton ● aussi sur la page Spectre pour enregistrer de vrais accords ; estimation
   conjointe (NNLS / gabarits d'accords) ; logique de basse plus fine ; réglage sur prises réelles.
+- Piste écartée : rattraper la basse Mi2 comme « série dominante » (part de l'énergie ≥ un seuil)
+  fait passer le Mi majeur synthétique à 28/28 sans casser les 7 accords synthétiques, **mais
+  régresse le banc réel** (ChordBench : 75 → 69 % ; notes seules 92 → 80 % ; sous-octaves fantômes
+  ajoutées à Cmaj7, Cadd9…) : sur de vrais échantillons, une vraie basse et une sous-harmonique
+  fantôme expliquent une part d'énergie voisine, aucun seuil ne les sépare — d'où l'estimation
+  conjointe ci-dessus. Le diagnostic (banc + `ChordBench`) reste le bon point de départ.
 - Non essayé sur téléphone : fluidité réelle, charge CPU (≈ 2,4 ms par analyse sur la JVM).
-
-### Banc d'essai à intégrer au build
-
-Le banc utilisé pour ces mesures est **archivé tel quel** dans [`banc/`](banc/) (hors du build :
-il ne change rien à `./gradlew test`) : `kotlin/` (bancs `LowStringDiag`, `StiffStringDiag`,
-`LowTorture`, `NoiseDiag`, `PolyScenario`, `ChordBench`, `FftBench`, traces), `harnais/` (projet
-Gradle JVM autonome qui compile le code pur de l'app avec les tests, scripts qui génèrent les
-copies instrumentées, `telecharger-echantillons.sh` : notes G♯1–E5 des banques FluidR3 (CC BY 3.0),
-MusyngKite et FatBoy (CC BY-SA 3.0), commit `044fab8e` épinglé). À faire : remplacer les chemins
-absolus du conteneur de développement (`PhoneSim.dir`, `build.gradle.kts`, scripts), en faire un
-jeu de tests optionnel (`./gradlew banc`) avec JLayer en dépendance de test, et télécharger les
-échantillons à la première exécution.
 
 ### Calibration du micro
 

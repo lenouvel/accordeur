@@ -1,7 +1,9 @@
 #!/bin/sh
-# Copie instrumentée de l'analyseur de spectre (traces des séries et des notes).
+# Copie instrumentée de l'analyseur de spectre (traces des séries et des notes), dans banc/diag/kotlin/.
+# À lancer avant `./gradlew banc` pour compiler les traceurs qui dépendent du paquet dbg.
 cd "$(dirname "$0")"
-sed -e 's/^package com.blenouvel.accordeur.audio/package com.blenouvel.accordeur.dbg/' -e 's/class SpectrumAnalyzer(/class DebugSpectrum(/' -e 's/^class SpectrumPeak/class DbgPeak/' -e 's/^class HeardNote/class DbgNote/' -e 's/^class SpectrumFrame(/class DbgFrame(/' /home/user/accordeur/app/src/main/kotlin/com/blenouvel/accordeur/audio/SpectrumAnalyzer.kt | sed -e 's/SpectrumPeak(/DbgPeak(/g; s/HeardNote(/DbgNote(/g; s/SpectrumFrame(/DbgFrame(/g; s/: SpectrumFrame/: DbgFrame/g; s/List<SpectrumPeak>/List<DbgPeak>/g; s/List<HeardNote>/List<DbgNote>/g; s/ArrayList<HeardNote>/ArrayList<DbgNote>/g; s/SpectrumAnalyzer\./DebugSpectrum./g' > diag/kotlin/DebugSpectrum.kt
+mkdir -p diag/kotlin
+sed -e 's/^package com.blenouvel.accordeur.audio/package com.blenouvel.accordeur.dbg/' -e 's/class SpectrumAnalyzer(/class DebugSpectrum(/' -e 's/^class SpectrumPeak/class DbgPeak/' -e 's/^class HeardNote/class DbgNote/' -e 's/^class SpectrumFrame(/class DbgFrame(/' ../app/src/main/kotlin/com/blenouvel/accordeur/audio/SpectrumAnalyzer.kt | sed -e 's/SpectrumPeak(/DbgPeak(/g; s/HeardNote(/DbgNote(/g; s/SpectrumFrame(/DbgFrame(/g; s/: SpectrumFrame/: DbgFrame/g; s/List<SpectrumPeak>/List<DbgPeak>/g; s/List<HeardNote>/List<DbgNote>/g; s/ArrayList<HeardNote>/ArrayList<DbgNote>/g; s/SpectrumAnalyzer\./DebugSpectrum./g' > diag/kotlin/DebugSpectrum.kt
 python3 - <<'PY'
 p='diag/kotlin/DebugSpectrum.kt'
 s=open(p).read()

@@ -1,7 +1,9 @@
 #!/bin/sh
-# Copie instrumentée du détecteur courant (traces des candidats).
+# Copie instrumentée du détecteur courant (traces des candidats), dans banc/diag/kotlin/.
+# À lancer avant `./gradlew banc` pour compiler les traceurs qui dépendent du paquet dbg.
 cd "$(dirname "$0")"
-sed -e 's/^package com.blenouvel.accordeur.audio/package com.blenouvel.accordeur.dbg/' -e 's/class PitchDetector(/class DebugDetector(/' -e 's/class PitchEstimate {/class DebugEstimate {/' -e 's/out: PitchEstimate/out: DebugEstimate/' /home/user/accordeur/app/src/main/kotlin/com/blenouvel/accordeur/audio/PitchDetector.kt > diag/kotlin/DebugDetector.kt
+mkdir -p diag/kotlin
+sed -e 's/^package com.blenouvel.accordeur.audio/package com.blenouvel.accordeur.dbg/' -e 's/class PitchDetector(/class DebugDetector(/' -e 's/class PitchEstimate {/class DebugEstimate {/' -e 's/out: PitchEstimate/out: DebugEstimate/' ../app/src/main/kotlin/com/blenouvel/accordeur/audio/PitchDetector.kt > diag/kotlin/DebugDetector.kt
 python3 - <<'PY'
 p='diag/kotlin/DebugDetector.kt'
 s=open(p).read()

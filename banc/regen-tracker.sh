@@ -1,7 +1,9 @@
 #!/bin/sh
-# Copies instrumentées de TunerProcessor + PolyTracker (paquet dbg) pour tracer le mode poly.
+# Copies instrumentées de TunerProcessor + PolyTracker (paquet dbg) pour tracer le mode poly,
+# dans banc/diag/kotlin/. À lancer avant `./gradlew banc` pour compiler les traceurs poly.
 cd "$(dirname "$0")"
-A=/home/user/accordeur/app/src/main/kotlin/com/blenouvel/accordeur/audio
+mkdir -p diag/kotlin
+A=../app/src/main/kotlin/com/blenouvel/accordeur/audio
 for f in PolyTracker TunerProcessor; do
   sed -e 's/^package com.blenouvel.accordeur.audio/package com.blenouvel.accordeur.dbg\n\nimport com.blenouvel.accordeur.audio.*/' $A/$f.kt > diag/kotlin/Dbg$f.kt
 done

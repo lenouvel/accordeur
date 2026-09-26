@@ -19,7 +19,9 @@ import kotlin.math.sqrt
 /** Échantillons réels (soundfonts) + modèles de micro de téléphone, pour les diagnostics. */
 object PhoneSim {
     const val SR = 48_000
-    val dir = File("/tmp/claude-0/-home-user-accordeur/02c0f76a-3ff2-55ad-afc2-406e7976f715/scratchpad/samples")
+
+    /** Dossier des échantillons : fixé par la tâche `banc` (`banc.samples`), sinon `banc/samples`. */
+    val dir = File(System.getProperty("banc.samples") ?: "banc/samples")
 
     private val cache = java.util.concurrent.ConcurrentHashMap<String, DoubleArray>()
 
