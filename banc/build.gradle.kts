@@ -156,7 +156,7 @@ tasks.register<Test>("banc") {
     maxHeapSize = "2g"
     systemProperty("banc.samples", samplesDir.asFile.absolutePath)
     // Propriétés de réglage des traceurs (voir banc/kotlin/*.kt), transmises si présentes.
-    for (key in listOf("g.sf", "g.inst", "g.note", "g.mic", "g.level", "g.trace", "trace.t")) {
+    for (key in listOf("g.sf", "g.inst", "g.note", "g.mic", "g.level", "g.trace", "trace.t", "nnls.thresh", "nnls.lambda")) {
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
     testLogging {

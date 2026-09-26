@@ -458,14 +458,21 @@ sources micro du S25 avec le test en direct.
   `SpectrumAnalyzerTest.rootInTheBassOfEMajor` ignoré en attendant).
 - Notes seules aiguës parfois lues une octave au-dessus (La4 → La5) quand leurs partiels 3 et 4
   sont très faibles.
-- Pistes : bouton ● aussi sur la page Spectre pour enregistrer de vrais accords ; estimation
-  conjointe (NNLS / gabarits d'accords) ; logique de basse plus fine ; réglage sur prises réelles.
+- Pistes : bouton ● aussi sur la page Spectre pour enregistrer de vrais accords ; logique de basse
+  plus fine ; réglage sur prises réelles.
 - Piste écartée : rattraper la basse Mi2 comme « série dominante » (part de l'énergie ≥ un seuil)
   fait passer le Mi majeur synthétique à 28/28 sans casser les 7 accords synthétiques, **mais
   régresse le banc réel** (ChordBench : 75 → 69 % ; notes seules 92 → 80 % ; sous-octaves fantômes
   ajoutées à Cmaj7, Cadd9…) : sur de vrais échantillons, une vraie basse et une sous-harmonique
-  fantôme expliquent une part d'énergie voisine, aucun seuil ne les sépare — d'où l'estimation
-  conjointe ci-dessus. Le diagnostic (banc + `ChordBench`) reste le bon point de départ.
+  fantôme expliquent une part d'énergie voisine, aucun seuil ne les sépare. Le diagnostic (banc +
+  `ChordBench`) reste le bon point de départ.
+- Estimation conjointe **NNLS essayée** (banc `JointBench`, `./gradlew banc --tests '*JointBench*'`) :
+  spectre modélisé comme combinaison non négative de gabarits harmoniques d'une note chacun. Résultat
+  **~27 % au bon nom contre 75 % pour le glouton** — des gabarits génériques (raideur fixe, grille au
+  demi-ton) ne collent pas aux partiels réels (la raideur décale les partiels aigus), là où le
+  glouton ajuste f0 **et** raideur par note. La vraie piste conjointe serait un NNLS sur les **séries
+  candidates déjà ajustées** du glouton (et non des notes génériques) ; reste l'ambiguïté d'octave à
+  la basse (Mi2 vs Mi3), non tranchée par le NNLS non plus.
 - Non essayé sur téléphone : fluidité réelle, charge CPU (≈ 2,4 ms par analyse sur la JVM).
 
 ### Calibration du micro
