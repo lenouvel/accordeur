@@ -54,6 +54,9 @@ class PitchStabilizer(
     var holding = false
         private set
 
+    /** Une note est en cours (affichée ou maintenue) : on continue de chercher sa hauteur. */
+    val active: Boolean get() = !smoothedCents.isNaN()
+
     /** Bruit de fond estimé (dBFS). */
     var noiseFloorDb = INITIAL_NOISE_FLOOR_DB
         private set
@@ -125,7 +128,14 @@ class PitchStabilizer(
         lockedTargetHz: Double,
         stringTargetsHz: DoubleArray,
     ) {
-        val valid = gateOpen && estimate != null && estimate.isValid
+        // Le gate (niveau global) ouvre une note. Mais une corde grave qui sonne encore tombe vite
+        // sous le seuil alors qu'elle reste nette : tant qu'une note est établie, on la maintient si
+        // le détecteur trouve encore une **série de partiels franche** (beaucoup de partiels alignés),
+        // même gate fermé. Un ronflement ou du bruit ne produit pas une telle série : la note n'est
+        // pas maintenue sur du faux (on préfère ne rien afficher), et la garde d'octave/continuité
+        // ci-dessous écarte une mesure aberrante isolée.
+        val sustain = !gateOpen && acceptedInSegment > 0 && estimate != null && estimate.partials >= SUSTAIN_MIN_PARTIALS
+        val valid = (gateOpen || sustain) && estimate != null && estimate.isValid
         if (warmupHops > 0) {
             warmupHops--
         } else if (valid) {
@@ -175,6 +185,10 @@ class PitchStabilizer(
             // Saut franc vers une autre note sans nouvelle attaque : on n'y croit qu'après
             // plusieurs mesures concordantes (une mesure isolée aberrante est ignorée).
             if (abs(cents - reference) > NOTE_CHANGE_CENTS) {
+                // En maintien (gate fermé), on ne change jamais de note : une mesure loin de la note
+                // établie est un artefact (ronflement, résonance) — on maintient plutôt que d'afficher
+                // une autre note. Un vrai changement de corde rouvre le gate (nouvelle attaque).
+                if (!gateOpen) return
                 if (pendingCount > 0 && abs(cents - pendingValue) < NOTE_AGREEMENT_CENTS) {
                     pendingCount++
                 } else {
@@ -295,6 +309,14 @@ class PitchStabilizer(
         const val SMOOTHING_BETA = 0.05
         const val ONSET_JUMP_DB = 6.0
         const val ONSET_REFRACTORY_S = 0.15
+
+        /**
+         * Nombre de partiels francs qui suffit à maintenir une note établie même quand le gate
+         * (niveau global) s'est refermé — une corde grave qui sonne encore mais faiblit. Assez haut
+         * pour qu'un ronflement ou du bruit (série courte ou incohérente) ne maintienne rien.
+         * Réglable au banc par -Dsustain.partials=… (sinon la valeur par défaut).
+         */
+        val SUSTAIN_MIN_PARTIALS = System.getProperty("sustain.partials")?.toIntOrNull() ?: 14
 
         private const val MEDIAN_SIZE = 5
         private const val OCTAVE_GUARD_READINGS = 3

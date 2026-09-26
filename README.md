@@ -298,7 +298,16 @@ app/src/main/kotlin/com/blenouvel/accordeur/
 6. **Stabilisation** : deux mesures concordantes au début d'une note (les trames d'attaque sont
    peu sûres), mesure isolée aberrante ignorée, garde d'octave (repli vers la corde verrouillée /
    une corde de l'accordage, puis continuité pendant la note), médian sur 5 mesures, filtre 1€,
-   maintien 1,2 s de la dernière valeur.
+   maintien 1,2 s de la dernière valeur. Le gate (niveau global) ouvre une note ; mais une **corde
+   grave qui sonne encore** faiblit vite sous le seuil alors qu'elle reste nette. Tant qu'une note
+   est établie, on continue donc à chercher sa hauteur même gate fermé, et on la maintient si le
+   détecteur trouve encore une **série de partiels franche** (≥ 14 partiels) cohérente avec elle —
+   sinon la corde disparaît de l'écran alors qu'on joue. Un ronflement ou du bruit ne produit pas
+   une telle série (rien n'est maintenu sur du faux), et gate fermé on ne **change jamais** de note
+   (une mesure lointaine est un artefact : on maintient plutôt que d'afficher une autre note ; un
+   vrai changement de corde rouvre le gate). Sur une prise réelle d'un Ré grave (S25, corde qui
+   sonne ~5 s) : trames sans note affichée **50 % → < 1 %**, sans dégrader le ronflement (note
+   correcte, écart ≤ 1,5 ¢) ni le rejet du bruit pur.
 
 ### Précision mesurée hors appareil (tests et diagnostics JVM)
 

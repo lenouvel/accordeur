@@ -162,8 +162,10 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
         val poly: PolyReading?
         if (mode == TunerMode.MONO) {
             polyActive = false
-            // Court-circuit sur silence : pas de détection tant que le gate est fermé.
-            val found = stabilizer.gateOpen && detector.detect(window, estimate)
+            // Détection tant que le gate est ouvert, ou qu'une note est établie (une corde grave qui
+            // sonne encore mais faiblit sous le seuil) : le stabilisateur ne la maintient alors que
+            // sur une série de partiels franche. Court-circuit (silence sans note en cours) sinon.
+            val found = (stabilizer.gateOpen || stabilizer.active) && detector.detect(window, estimate)
             stabilizer.updatePitch(
                 if (found) estimate else null,
                 time,

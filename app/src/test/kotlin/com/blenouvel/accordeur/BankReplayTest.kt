@@ -1,12 +1,16 @@
 package com.blenouvel.accordeur
 
 import com.blenouvel.accordeur.audio.PitchDetector
+import com.blenouvel.accordeur.audio.PitchEstimate
 import com.blenouvel.accordeur.audio.PolyReading
+import com.blenouvel.accordeur.audio.Preprocessor
 import com.blenouvel.accordeur.audio.TunerMode
 import com.blenouvel.accordeur.audio.TunerProcessor
 import com.blenouvel.accordeur.audio.TunerTargets
 import com.blenouvel.accordeur.model.Note
 import com.blenouvel.accordeur.model.NoteMapper
+import com.blenouvel.accordeur.model.Notation
+import com.blenouvel.accordeur.model.NoteNames
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -118,6 +122,63 @@ class BankReplayTest {
         )
         if (System.getenv("ACCORDEUR_BANQUE_STRICT") == "1") {
             assertTrue("$worse son(s) en recul par rapport à l'enregistrement", worse == 0)
+        }
+    }
+
+    private fun label(f: Double, a4: Double) =
+        NoteNames.label(NoteMapper.nearest(f, a4).note, Notation.ENGLISH)
+
+    /**
+     * Détail trame par trame de chaque son de la banque (diagnostic d'une prise réelle qui « a du
+     * mal », ex. le Ré grave en Drop D) : niveau, gate, MPM (fréquence, clarté), fréquence ajustée
+     * et nombre de partiels, note affichée. Montre *où* ça coince (gate fermé ? octave ? série de
+     * partiels absente ?). Activé par `-PbanqueDetail=1` pour ne pas alourdir `./gradlew test`.
+     */
+    @Test
+    fun frameDetail() {
+        if (System.getProperty("banque.detail") != "1") return
+        val directory = bankDirectory() ?: run { println("Banque absente : rien à tracer."); return }
+        for ((wav, txt) in BankFiles.sounds(directory)) {
+            val sheet = BankFiles.readSheet(txt)
+            val sound = BankFiles.readWav(wav)
+            val a4 = sheet["la4"].toDouble()
+            val notes = sheet["accordage"].split('|')[2].split(' ').map { Note.parse(it) }
+            val targets = DoubleArray(notes.size) { NoteMapper.frequencyOf(notes[it], a4) }
+            val locked = sheet["corde_verrouillee"].toInt()
+            val mode = TunerMode.valueOf(sheet["mode"])
+
+            val processor = TunerProcessor(sound.sampleRate)
+            processor.mode = mode
+            processor.targets = TunerTargets(targets, if (mode == TunerMode.MONO) locked else -1)
+            val pre = Preprocessor(sound.sampleRate)
+            val filtered = DoubleArray(sound.samples.size) { pre.process(sound.samples[it].toDouble()) }
+            val det = PitchDetector()
+            val est = PitchEstimate()
+
+            val cordeLabel = if (locked in notes.indices) label(targets[locked], a4) else "auto"
+            println("=== ${wav.name} : $mode, La $a4, accordage ${notes.joinToString(" ") { label(NoteMapper.frequencyOf(it, a4), a4) }}, corde $cordeLabel")
+            val chunk = FloatArray(PitchDetector.HOP)
+            var i = 0
+            while (i + chunk.size <= sound.samples.size) {
+                sound.samples.copyInto(chunk, 0, i, i + chunk.size)
+                val frame = processor.process(chunk)
+                val end = i + chunk.size
+                if (end >= PitchDetector.WINDOW) {
+                    val w = DoubleArray(PitchDetector.WINDOW) { filtered[end - PitchDetector.WINDOW + it] }
+                    val found = det.detect(w, est)
+                    println(
+                        String.format(
+                            Locale.ROOT,
+                            "  t=%5.2f niv %6.1f gate %-5s | MPM %8.2f (%s) clarté %.3f → %8.2f (%s) partiels %d | affiché %s",
+                            end.toDouble() / sound.sampleRate, frame?.levelDb ?: 0.0, frame?.signal,
+                            if (found) est.mpmFrequency else 0.0, if (found) label(est.mpmFrequency, a4) else "-", est.clarity,
+                            if (found) est.frequency else 0.0, if (found) label(est.frequency, a4) else "-", est.partials,
+                            if (frame != null && frame.hasPitch) label(frame.frequency, a4) + (if (frame.holding) "(h)" else "") + String.format(Locale.ROOT, " %+.1f", NoteMapper.nearest(frame.frequency, a4).cents) else "—",
+                        ),
+                    )
+                }
+                i += chunk.size
+            }
         }
     }
 }

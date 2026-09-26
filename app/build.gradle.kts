@@ -42,6 +42,14 @@ android {
     }
 }
 
+// Diagnostic de la banque de sons : `-PbanqueDetail=1` active BankReplayTest.frameDetail
+// (trace trame par trame d'une prise). Propriété de projet (traverse le daemon Gradle, contrairement
+// à une variable d'environnement) transmise au JVM de test.
+tasks.withType<Test>().configureEach {
+    (project.findProperty("banqueDetail") as String?)?.let { systemProperty("banque.detail", it) }
+    (project.findProperty("sustainPartials") as String?)?.let { systemProperty("sustain.partials", it) }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
