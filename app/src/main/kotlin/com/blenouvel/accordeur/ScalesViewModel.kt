@@ -71,8 +71,8 @@ class ScalesViewModel(
      */
     private val step = MutableStateFlow(0)
 
-    /** Hauteur MIDI de la dernière note validée (pour le focus « case la plus proche »). */
-    private val lastMidi = MutableStateFlow(-1)
+    /** Dernière note validée (case réelle), pour guider vers la case jouable la plus proche. */
+    private val lastCell = MutableStateFlow<FretNote?>(null)
 
     /** Classe de hauteur entendue en dernier (anti-rebond : une note tenue ne compte qu'une fois). */
     private var lastHeardPc = -1
@@ -82,11 +82,11 @@ class ScalesViewModel(
         val positionMode: Boolean,
         val positionChoice: Int,
         val step: Int,
-        val lastMidi: Int,
+        val lastCell: FretNote?,
     )
 
-    private val guide = combine(interactive, positionMode, positionChoice, step, lastMidi) { i, pm, pc, st, lm ->
-        Guide(i, pm, pc, st, lm)
+    private val guide = combine(interactive, positionMode, positionChoice, step, lastCell) { i, pm, pc, st, lc ->
+        Guide(i, pm, pc, st, lc)
     }
 
     val uiState: StateFlow<ScalesUiState> =
@@ -115,7 +115,7 @@ class ScalesViewModel(
             } else if (g.interactive) {
                 val sequence = runSequence(scale.size)
                 focusDegree = if (sequence.isNotEmpty()) sequence[g.step.mod(sequence.size)] else -1
-                focusCells = focusCells(notes, focusDegree, settings.scaleFocusNearest, g.lastMidi)
+                focusCells = focusCells(notes, focusDegree, settings.scaleFocusNearest, g.lastCell)
             }
 
             ScalesUiState(
@@ -167,7 +167,7 @@ class ScalesViewModel(
     fun toggleInteractive() {
         val turningOn = !interactive.value
         interactive.value = turningOn
-        lastMidi.value = -1
+        lastCell.value = null
         lastHeardPc = -1
         step.value = if (turningOn && positionMode.value) startStepForBox(resolveBox(positionChoice.value, currentPositions())) else 0
     }
@@ -213,7 +213,7 @@ class ScalesViewModel(
             if (run.isEmpty()) return
             val current = run[step.value.mod(run.size)]
             if (pc == current.midi.mod(12)) {
-                lastMidi.value = current.midi
+                lastCell.value = FretNote(current.string, current.fret, current.degree, current.midi)
                 step.value = (step.value + 1).mod(run.size)
             }
             return
@@ -222,7 +222,9 @@ class ScalesViewModel(
         if (degree < 0 || degree >= s.scale.intervals.size) return
         val focusPc = (s.settings.scaleRoot + s.scale.intervals[degree]).mod(12)
         if (pc == focusPc) {
-            lastMidi.value = midi
+            // Ancre sur la case réelle jouée (octave entendue, corde la plus proche de la précédente)
+            // pour guider la note suivante sans sauter de corde.
+            lastCell.value = nearestNote(s.notes.filter { it.degree == degree }, midi, lastCell.value)
             val len = runSequence(s.scale.size).size
             if (len > 0) step.value = (step.value + 1).mod(len)
         }
@@ -235,7 +237,7 @@ class ScalesViewModel(
 
     private fun resetGuide() {
         step.value = 0
-        lastMidi.value = -1
+        lastCell.value = null
         lastHeardPc = -1
     }
 
@@ -283,15 +285,34 @@ class ScalesViewModel(
             return seq
         }
 
-        private fun focusCells(notes: List<FretNote>, focusDegree: Int, nearest: Boolean, lastMidi: Int): Set<Int> {
+        internal fun focusCells(notes: List<FretNote>, focusDegree: Int, nearest: Boolean, last: FretNote?): Set<Int> {
             if (focusDegree < 0) return emptySet()
             val matches = notes.filter { it.degree == focusDegree }
             if (matches.isEmpty()) return emptySet()
             if (!nearest) return matches.mapTo(HashSet()) { cellKey(it.string, it.fret) }
-            // La plus proche de la dernière note jouée (ou la plus grave au démarrage).
-            val target = if (lastMidi >= 0) lastMidi else matches.minOf { it.midi }
-            val best = matches.minByOrNull { kotlin.math.abs(it.midi - target) } ?: return emptySet()
-            return setOf(cellKey(best.string, best.fret))
+            // La case jouable la plus proche : la plus grave au démarrage, sinon la plus proche de la
+            // dernière note (même corde ou corde voisine — jamais un saut de corde).
+            val best = if (last == null) matches.minByOrNull { it.midi } else nearestNote(matches, last.midi, last)
+            return best?.let { setOf(cellKey(it.string, it.fret)) } ?: emptySet()
+        }
+
+        /**
+         * Parmi [candidates], la case à mettre en focus depuis [anchor] : d'abord sur la même corde ou
+         * une corde voisine (ne jamais sauter de corde), puis la plus proche en hauteur de [targetMidi]
+         * — ce qui fait monter/descendre la gamme pas à pas — puis la plus proche en corde et en case.
+         * [anchor] nul : au plus près de la hauteur seule.
+         */
+        internal fun nearestNote(candidates: List<FretNote>, targetMidi: Int, anchor: FretNote?): FretNote? {
+            if (candidates.isEmpty()) return null
+            if (anchor == null) return candidates.minByOrNull { kotlin.math.abs(it.midi - targetMidi) }
+            return candidates.minWithOrNull(
+                compareBy(
+                    { if (kotlin.math.abs(it.string - anchor.string) <= 1) 0 else 1 },
+                    { kotlin.math.abs(it.midi - targetMidi) },
+                    { kotlin.math.abs(it.string - anchor.string) },
+                    { kotlin.math.abs(it.fret - anchor.fret) },
+                )
+            )
         }
     }
 }

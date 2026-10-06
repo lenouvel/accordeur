@@ -1,5 +1,6 @@
 package com.blenouvel.accordeur
 
+import com.blenouvel.accordeur.model.FretNote
 import com.blenouvel.accordeur.model.FretboardMap
 import com.blenouvel.accordeur.model.NoteNames
 import com.blenouvel.accordeur.model.Notation
@@ -174,6 +175,55 @@ class ScalesTest {
         // On ne revient pas à la corde grave à la jonction : la box 0 finit dans l'aigu, la box 1 y démarre.
         assertEquals(0, up.first { it.position == 0 }.string)
         assertEquals(5, up.first { it.position == 1 }.string)
+    }
+
+    /**
+     * Simule le guide interactif hors mode positions (manche entier, « case la plus proche »), en
+     * supposant que l'on joue chaque case proposée : renvoie la suite des cases éclairées sur une
+     * montée + descente complète de la gamme, puis un peu au-delà (pour couvrir le rebouclage).
+     */
+    private fun guidedCells(root: Int, scaleId: String, frets: Int = 12): List<FretNote> {
+        val s = scale(scaleId)
+        val notes = FretboardMap.notes(Presets.STANDARD_6, root, s, frets)
+        val seq = ScalesViewModel.runSequence(s.size)
+        var anchor: FretNote? = null
+        val out = ArrayList<FretNote>()
+        for (i in 0 until seq.size * 2 + 1) {
+            val key = ScalesViewModel.focusCells(notes, seq[i.mod(seq.size)], nearest = true, anchor).single()
+            val cell = notes.first { ScalesViewModel.cellKey(it.string, it.fret) == key }
+            out += cell
+            anchor = cell
+        }
+        return out
+    }
+
+    @Test
+    fun interactiveGuideNeverSkipsStrings() {
+        // Le bug : hors mode positions, le guide proposait parfois une case à deux cordes d'écart
+        // (même hauteur sur plusieurs cordes, départage par ordre de liste). Invariant : deux cases
+        // consécutives restent sur la même corde ou une corde voisine, pour toutes les gammes.
+        for (s in ScaleCatalog.all) {
+            for (root in 0 until 12) {
+                val cells = guidedCells(root, s.id)
+                cells.zipWithNext().forEach { (a, b) ->
+                    assertTrue(
+                        "${s.id} sur $root : saut de corde ${a.string}→${b.string}",
+                        abs(a.string - b.string) <= 1,
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun interactiveGuideClimbsThenDescends() {
+        // Montée puis descente : la hauteur augmente jusqu'au sommet (fondamentale à l'octave) puis
+        // redescend, sans repartir en arrière au milieu.
+        val cells = guidedCells(7, "major")
+        val midis = cells.map { it.midi }
+        val peak = midis.indexOf(midis.max())
+        assertTrue("montée", midis.subList(0, peak + 1).zipWithNext().all { (a, b) -> b >= a })
+        assertTrue("descente", midis.subList(peak, (cells.size + 2) / 2).zipWithNext().all { (a, b) -> b <= a })
     }
 
     @Test
