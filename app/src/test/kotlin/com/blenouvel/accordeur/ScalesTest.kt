@@ -227,6 +227,28 @@ class ScalesTest {
     }
 
     @Test
+    fun interactiveGuideChangesStringEarly() {
+        // Doigté « économique » : on change de corde au plus tôt. Sur la montée d'une octave de
+        // toutes les gammes et fondamentales, l'invariant exact : si on reste sur la corde alors que
+        // la hauteur augmente, c'est que cette note n'était pas jouable sur la corde du dessus.
+        for (s in ScaleCatalog.all) {
+            for (root in 0 until 12) {
+                val notes = FretboardMap.notes(Presets.STANDARD_6, root, s, 12)
+                val up = guidedCells(root, s.id).take(s.size + 1) // fondamentale → octave
+                val path = up.joinToString(" ") { "${it.string}:${it.fret}" }
+                up.zipWithNext().forEach { (a, b) ->
+                    if (b.string == a.string && b.midi > a.midi) {
+                        assertTrue(
+                            "${s.id}/$root : aurait dû changer de corde — $path",
+                            notes.none { it.string == a.string + 1 && it.midi == b.midi },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun fretboardPositions() {
         val notes = FretboardMap.notes(Presets.STANDARD_6, 0, scale("major"), 12)
         val lowE = notes.filter { it.string == 0 }.map { it.fret }

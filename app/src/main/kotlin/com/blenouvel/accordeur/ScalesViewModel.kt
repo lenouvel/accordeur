@@ -222,9 +222,9 @@ class ScalesViewModel(
         if (degree < 0 || degree >= s.scale.intervals.size) return
         val focusPc = (s.settings.scaleRoot + s.scale.intervals[degree]).mod(12)
         if (pc == focusPc) {
-            // Ancre sur la case réelle jouée (octave entendue, corde la plus proche de la précédente)
-            // pour guider la note suivante sans sauter de corde.
-            lastCell.value = nearestNote(s.notes.filter { it.degree == degree }, midi, lastCell.value)
+            // Avance d'un cran sur le doigté prescrit : on ancre sur la case qui était proposée
+            // (celle qu'on vient de jouer), pour enchaîner sans sauter de corde.
+            focusNote(s.notes, degree, lastCell.value)?.let { lastCell.value = it }
             val len = runSequence(s.scale.size).size
             if (len > 0) step.value = (step.value + 1).mod(len)
         }
@@ -290,26 +290,41 @@ class ScalesViewModel(
             val matches = notes.filter { it.degree == focusDegree }
             if (matches.isEmpty()) return emptySet()
             if (!nearest) return matches.mapTo(HashSet()) { cellKey(it.string, it.fret) }
-            // La case jouable la plus proche : la plus grave au démarrage, sinon la plus proche de la
-            // dernière note (même corde ou corde voisine — jamais un saut de corde).
-            val best = if (last == null) matches.minByOrNull { it.midi } else nearestNote(matches, last.midi, last)
-            return best?.let { setOf(cellKey(it.string, it.fret)) } ?: emptySet()
+            val best = focusNote(notes, focusDegree, last) ?: return emptySet()
+            return setOf(cellKey(best.string, best.fret))
         }
 
         /**
-         * Parmi [candidates], la case à mettre en focus depuis [anchor] : d'abord sur la même corde ou
-         * une corde voisine (ne jamais sauter de corde), puis la plus proche en hauteur de [targetMidi]
-         * — ce qui fait monter/descendre la gamme pas à pas — puis la plus proche en corde et en case.
-         * [anchor] nul : au plus près de la hauteur seule.
+         * Case à mettre en focus pour [focusDegree] (mode « case la plus proche »), ou null si le
+         * degré n'est pas présent. Au démarrage ([last] nul) : la plus grave. Sinon : la case jouable
+         * la plus proche de [last] via [nearestNote].
          */
-        internal fun nearestNote(candidates: List<FretNote>, targetMidi: Int, anchor: FretNote?): FretNote? {
+        internal fun focusNote(notes: List<FretNote>, focusDegree: Int, last: FretNote?): FretNote? {
+            val matches = notes.filter { it.degree == focusDegree }
+            return when {
+                matches.isEmpty() -> null
+                last == null -> matches.minByOrNull { it.midi }
+                else -> nearestNote(matches, last)
+            }
+        }
+
+        /**
+         * Parmi [candidates], la case à enchaîner depuis [anchor], pour un doigté « économique » :
+         *  1. même corde ou corde voisine — on ne saute jamais de corde ;
+         *  2. la plus proche en hauteur — la gamme monte / descend pas à pas ;
+         *  3. à hauteur égale (même note sur plusieurs cordes), la corde dans le sens de la marche
+         *     (montée → corde plus aiguë, descente → plus grave) : on change de corde au plus tôt ;
+         *  4. enfin la case la plus proche.
+         */
+        internal fun nearestNote(candidates: List<FretNote>, anchor: FretNote): FretNote? {
             if (candidates.isEmpty()) return null
-            if (anchor == null) return candidates.minByOrNull { kotlin.math.abs(it.midi - targetMidi) }
+            val target = candidates.minByOrNull { kotlin.math.abs(it.midi - anchor.midi) }!!.midi
+            val dir = if (target >= anchor.midi) 1 else -1 // montée vers les cordes aiguës, descente l'inverse
             return candidates.minWithOrNull(
                 compareBy(
                     { if (kotlin.math.abs(it.string - anchor.string) <= 1) 0 else 1 },
-                    { kotlin.math.abs(it.midi - targetMidi) },
-                    { kotlin.math.abs(it.string - anchor.string) },
+                    { kotlin.math.abs(it.midi - anchor.midi) },
+                    { dir * (anchor.string - it.string) },
                     { kotlin.math.abs(it.fret - anchor.fret) },
                 )
             )
