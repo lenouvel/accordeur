@@ -14,14 +14,21 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.blenouvel.accordeur.audio.MicSource
 import com.blenouvel.accordeur.audio.isAvailable
 import com.blenouvel.accordeur.audio.TunerMode
+import com.blenouvel.accordeur.model.ClickSound
 import com.blenouvel.accordeur.model.CustomTuningCodec
 import com.blenouvel.accordeur.model.FretLabels
 import com.blenouvel.accordeur.model.FretboardMap
+import com.blenouvel.accordeur.model.MetronomeConfig
+import com.blenouvel.accordeur.model.MetronomeRange
 import com.blenouvel.accordeur.model.Notation
 import com.blenouvel.accordeur.model.NoteMapper
 import com.blenouvel.accordeur.model.Presets
 import com.blenouvel.accordeur.model.ScaleCatalog
+import com.blenouvel.accordeur.model.SilentMeasures
+import com.blenouvel.accordeur.model.Subdivision
+import com.blenouvel.accordeur.model.TempoAutomation
 import com.blenouvel.accordeur.model.Tuning
+import com.blenouvel.accordeur.model.VariationLaw
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -61,10 +68,50 @@ data class Settings(
     val leftHanded: Boolean = false,
     /** Mode interactif Gammes : focus sur la case la plus proche (true) ou toutes les positions (false). */
     val scaleFocusNearest: Boolean = false,
+    /** Dernières gammes choisies (identifiants, du plus récent au plus ancien). */
+    val recentScaleIds: List<String> = emptyList(),
+    // --- Métronome (champs plats ; assemblés dans [metronome]). ---
+    val metroBpm: Int = MetronomeRange.DEFAULT_BPM,
+    val metroBeats: Int = 4,
+    val metroSubdivision: Subdivision = Subdivision.QUARTER,
+    val metroSound: ClickSound = ClickSound.CLICK,
+    val metroAccentFirst: Boolean = true,
+    val metroCountInBars: Int = 0,
+    val metroSilentEnabled: Boolean = false,
+    val metroSilentPlay: Int = 1,
+    val metroSilentMute: Int = 1,
+    val metroAutoEnabled: Boolean = false,
+    val metroAutoStart: Int = 60,
+    val metroAutoTarget: Int = 120,
+    val metroAutoStep: Int = 5,
+    val metroAutoStepBars: Int = 4,
+    val metroAutoLoop: Boolean = false,
+    val metroAutoLaw: VariationLaw = VariationLaw.LINEAR,
 ) {
     /** Accordage courant (repli sur Standard 6 cordes si l'identifiant n'existe plus). */
     val tuning: Tuning
         get() = customTunings.firstOrNull { it.id == tuningId } ?: Presets.byId(tuningId) ?: Presets.DEFAULT
+
+    /** Configuration du métronome assemblée depuis les champs plats. */
+    val metronome: MetronomeConfig
+        get() = MetronomeConfig(
+            bpm = metroBpm,
+            beatsPerMeasure = metroBeats,
+            subdivision = metroSubdivision,
+            sound = metroSound,
+            accentFirst = metroAccentFirst,
+            countInBars = metroCountInBars,
+            silent = SilentMeasures(metroSilentEnabled, metroSilentPlay, metroSilentMute),
+            automation = TempoAutomation(
+                enabled = metroAutoEnabled,
+                startBpm = metroAutoStart,
+                targetBpm = metroAutoTarget,
+                stepBpm = metroAutoStep,
+                stepBars = metroAutoStepBars,
+                loop = metroAutoLoop,
+                law = metroAutoLaw,
+            ),
+        ).sanitized()
 
     companion object {
         const val DEFAULT_TOLERANCE = 5
@@ -123,7 +170,10 @@ class SettingsStore(context: Context) {
 
     suspend fun setScaleRoot(pitchClass: Int) = edit { it[SCALE_ROOT] = pitchClass.mod(12) }
 
-    suspend fun setScale(id: String) = edit { it[SCALE_ID] = id }
+    suspend fun setScale(id: String) = edit { prefs ->
+        prefs[SCALE_ID] = id
+        prefs[RECENT_SCALES] = pushRecent(prefs[RECENT_SCALES], id)
+    }
 
     suspend fun setScaleFrets(frets: Int) = edit { it[SCALE_FRETS] = frets }
 
@@ -132,6 +182,38 @@ class SettingsStore(context: Context) {
     suspend fun setLeftHanded(value: Boolean) = edit { it[LEFT_HANDED] = value }
 
     suspend fun setScaleFocusNearest(value: Boolean) = edit { it[SCALE_FOCUS_NEAREST] = value }
+
+    suspend fun setMetroBpm(value: Int) =
+        edit { it[METRO_BPM] = value.coerceIn(MetronomeRange.MIN_BPM, MetronomeRange.MAX_BPM) }
+
+    suspend fun setMetroBeats(value: Int) =
+        edit { it[METRO_BEATS] = value.coerceIn(MetronomeRange.MIN_BEATS, MetronomeRange.MAX_BEATS) }
+
+    suspend fun setMetroSubdivision(value: Subdivision) = edit { it[METRO_SUBDIVISION] = value.name }
+
+    suspend fun setMetroSound(value: ClickSound) = edit { it[METRO_SOUND] = value.name }
+
+    suspend fun setMetroAccentFirst(value: Boolean) = edit { it[METRO_ACCENT] = value }
+
+    suspend fun setMetroCountIn(value: Int) =
+        edit { it[METRO_COUNT_IN] = value.coerceIn(0, MetronomeRange.MAX_COUNT_IN) }
+
+    suspend fun setMetroSilent(value: SilentMeasures) = edit {
+        it[METRO_SILENT_ENABLED] = value.enabled
+        it[METRO_SILENT_PLAY] = value.playBars.coerceIn(1, MetronomeRange.MAX_SILENT_BARS)
+        it[METRO_SILENT_MUTE] = value.muteBars.coerceIn(1, MetronomeRange.MAX_SILENT_BARS)
+    }
+
+    suspend fun setMetroAutomation(value: TempoAutomation) = edit {
+        it[METRO_AUTO_ENABLED] = value.enabled
+        it[METRO_AUTO_START] = value.startBpm.coerceIn(MetronomeRange.MIN_BPM, MetronomeRange.MAX_BPM)
+        it[METRO_AUTO_TARGET] = value.targetBpm.coerceIn(MetronomeRange.MIN_BPM, MetronomeRange.MAX_BPM)
+        it[METRO_AUTO_STEP] = value.stepBpm.coerceIn(1, 60)
+        it[METRO_AUTO_STEPBARS] = value.stepBars.coerceIn(1, 32)
+        it[METRO_AUTO_LOOP] = value.loop
+        it[METRO_AUTO_LAW] = value.law.name
+    }
+
 
     /** Ajoute ou remplace (même identifiant) un accordage personnalisé, puis le sélectionne. */
     suspend fun saveCustomTuning(tuning: Tuning) = edit { prefs ->
@@ -182,6 +264,23 @@ class SettingsStore(context: Context) {
             scaleLabels = enumOf(this[SCALE_LABELS], defaults.scaleLabels),
             leftHanded = this[LEFT_HANDED] ?: defaults.leftHanded,
             scaleFocusNearest = this[SCALE_FOCUS_NEAREST] ?: defaults.scaleFocusNearest,
+            recentScaleIds = this[RECENT_SCALES]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: defaults.recentScaleIds,
+            metroBpm = this[METRO_BPM] ?: defaults.metroBpm,
+            metroBeats = this[METRO_BEATS] ?: defaults.metroBeats,
+            metroSubdivision = enumOf(this[METRO_SUBDIVISION], defaults.metroSubdivision),
+            metroSound = enumOf(this[METRO_SOUND], defaults.metroSound),
+            metroAccentFirst = this[METRO_ACCENT] ?: defaults.metroAccentFirst,
+            metroCountInBars = this[METRO_COUNT_IN] ?: defaults.metroCountInBars,
+            metroSilentEnabled = this[METRO_SILENT_ENABLED] ?: defaults.metroSilentEnabled,
+            metroSilentPlay = this[METRO_SILENT_PLAY] ?: defaults.metroSilentPlay,
+            metroSilentMute = this[METRO_SILENT_MUTE] ?: defaults.metroSilentMute,
+            metroAutoEnabled = this[METRO_AUTO_ENABLED] ?: defaults.metroAutoEnabled,
+            metroAutoStart = this[METRO_AUTO_START] ?: defaults.metroAutoStart,
+            metroAutoTarget = this[METRO_AUTO_TARGET] ?: defaults.metroAutoTarget,
+            metroAutoStep = this[METRO_AUTO_STEP] ?: defaults.metroAutoStep,
+            metroAutoStepBars = this[METRO_AUTO_STEPBARS] ?: defaults.metroAutoStepBars,
+            metroAutoLoop = this[METRO_AUTO_LOOP] ?: defaults.metroAutoLoop,
+            metroAutoLaw = enumOf(this[METRO_AUTO_LAW], defaults.metroAutoLaw),
         )
     }
 
@@ -212,5 +311,22 @@ class SettingsStore(context: Context) {
         val SCALE_LABELS = stringPreferencesKey("scale_labels")
         val LEFT_HANDED = booleanPreferencesKey("left_handed")
         val SCALE_FOCUS_NEAREST = booleanPreferencesKey("scale_focus_nearest")
+        val RECENT_SCALES = stringPreferencesKey("recent_scales")
+        val METRO_BPM = intPreferencesKey("metro_bpm")
+        val METRO_BEATS = intPreferencesKey("metro_beats")
+        val METRO_SUBDIVISION = stringPreferencesKey("metro_subdivision")
+        val METRO_SOUND = stringPreferencesKey("metro_sound")
+        val METRO_ACCENT = booleanPreferencesKey("metro_accent")
+        val METRO_COUNT_IN = intPreferencesKey("metro_count_in")
+        val METRO_SILENT_ENABLED = booleanPreferencesKey("metro_silent_enabled")
+        val METRO_SILENT_PLAY = intPreferencesKey("metro_silent_play")
+        val METRO_SILENT_MUTE = intPreferencesKey("metro_silent_mute")
+        val METRO_AUTO_ENABLED = booleanPreferencesKey("metro_auto_enabled")
+        val METRO_AUTO_START = intPreferencesKey("metro_auto_start")
+        val METRO_AUTO_TARGET = intPreferencesKey("metro_auto_target")
+        val METRO_AUTO_STEP = intPreferencesKey("metro_auto_step")
+        val METRO_AUTO_STEPBARS = intPreferencesKey("metro_auto_stepbars")
+        val METRO_AUTO_LOOP = booleanPreferencesKey("metro_auto_loop")
+        val METRO_AUTO_LAW = stringPreferencesKey("metro_auto_law")
     }
 }

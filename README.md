@@ -167,7 +167,7 @@ Manche **vertical** (tête en haut, corde grave à gauche), pensé pour une main
 | Réglage | Choix |
 |---|---|
 | **Tonalité** | 12 notes, sur un clavier d'une octave (touches noires : « Do♯ / Ré♭ ») |
-| **Gamme / mode** | 41 gammes en 6 familles (liste ci-dessous), avec leurs degrés dans le sélecteur |
+| **Gamme / mode** | 41 gammes en 6 familles (liste ci-dessous), avec leurs degrés dans le sélecteur ; les dernières choisies sont reprises en tête (« Récents ») |
 | **Accordage** | tous les accordages de l'accordeur (6, 7 cordes, personnalisés 4–8 cordes) — partagé avec l'accordeur |
 | **Cases** | 12, 15 ou 22 (12 et 15 tiennent sans défilement sur un S25, 22 défile) |
 | **Notes / Degrés** | nom des notes (notation FR/EN des réglages) ou intervalles (1, ♭3, ♯4…) |
@@ -182,6 +182,18 @@ Manche **vertical** (tête en haut, corde grave à gauche), pensé pour une main
   pour une tonalité sur touche noire, l'enharmonie la plus simple est choisie (Ré♭ majeur,
   Do♯ mineur).
 - Tous ces choix sont mémorisés.
+
+Deux modes d'apprentissage (activés à la demande, non mémorisés) :
+
+- **Interactif** : le micro écoute et met en focus la note suivante de la gamme (montée jusqu'à
+  l'octave puis descente).
+- **Positions** : n'éclaire qu'une **forme** (box) à la fois — le reste du manche est atténué —
+  avec un sélecteur ◀ Position n / N ▶. Chaque forme tient deux notes par corde (trois au-delà de
+  six notes) et s'ancre sur une note de la corde grave ; par défaut on part de la forme de la
+  fondamentale. Combiné à l'interactif, le guide (qui démarre sur la forme affichée) enchaîne les
+  formes en **serpentin** : une forme jouée d'une corde à l'autre, on descend d'une case à la
+  forme suivante et on la parcourt dans l'autre sens — sans revenir à la corde grave — et ainsi de
+  suite vers l'aigu ; le retour (la gamme à l'envers) suit le chemin inverse vers le sillet.
 
 Gammes disponibles :
 

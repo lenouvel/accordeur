@@ -7,8 +7,10 @@ import com.blenouvel.accordeur.data.Settings
 import com.blenouvel.accordeur.data.SettingsStore
 import com.blenouvel.accordeur.model.FretLabels
 import com.blenouvel.accordeur.model.FretNote
+import com.blenouvel.accordeur.model.FretPosition
 import com.blenouvel.accordeur.model.FretboardMap
 import com.blenouvel.accordeur.model.NoteMapper
+import com.blenouvel.accordeur.model.RunStep
 import com.blenouvel.accordeur.model.ScaleCatalog
 import com.blenouvel.accordeur.model.ScaleSpeller
 import com.blenouvel.accordeur.model.ScaleType
@@ -39,6 +41,14 @@ data class ScalesUiState(
     val focusDegree: Int = -1,
     /** Cases en focus (clés [ScalesViewModel.cellKey]) : la note suivante à jouer. */
     val focusCells: Set<Int> = emptySet(),
+    /** Mode « positions » : n'éclairer qu'une box à la fois (le reste du manche est atténué). */
+    val positionMode: Boolean = false,
+    /** Nombre de positions disponibles pour la gamme et l'accordage courants. */
+    val positionCount: Int = 0,
+    /** Indice de la position (box) active, ou −1 hors mode positions. */
+    val positionIndex: Int = -1,
+    /** Cases de la box active (clés [ScalesViewModel.cellKey]) ; null hors mode positions. */
+    val positionCells: Set<Int>? = null,
 )
 
 class ScalesViewModel(
@@ -49,7 +59,16 @@ class ScalesViewModel(
     private val highlighted = MutableStateFlow<Set<Int>>(emptySet())
     private val interactive = MutableStateFlow(false)
 
-    /** Position dans la séquence du guide (ascendante puis descendante, voir [runSequence]). */
+    /** Mode positions : manche restreint (atténué) à une box à la fois. */
+    private val positionMode = MutableStateFlow(false)
+
+    /** Box choisie à la main (−1 = automatique : la box de la fondamentale). */
+    private val positionChoice = MutableStateFlow(-1)
+
+    /**
+     * Position dans la séquence du guide. Hors mode positions : indice dans [runSequence]. En mode
+     * positions : indice dans le parcours [FretboardMap.run] qui enchaîne les box.
+     */
     private val step = MutableStateFlow(0)
 
     /** Hauteur MIDI de la dernière note validée (pour le focus « case la plus proche »). */
@@ -58,12 +77,47 @@ class ScalesViewModel(
     /** Classe de hauteur entendue en dernier (anti-rebond : une note tenue ne compte qu'une fois). */
     private var lastHeardPc = -1
 
+    private data class Guide(
+        val interactive: Boolean,
+        val positionMode: Boolean,
+        val positionChoice: Int,
+        val step: Int,
+        val lastMidi: Int,
+    )
+
+    private val guide = combine(interactive, positionMode, positionChoice, step, lastMidi) { i, pm, pc, st, lm ->
+        Guide(i, pm, pc, st, lm)
+    }
+
     val uiState: StateFlow<ScalesUiState> =
-        combine(settingsStore.settings, highlighted, interactive, step, lastMidi) { settings, marks, interactive, step, lastMidi ->
+        combine(settingsStore.settings, highlighted, guide) { settings, marks, g ->
             val scale = ScaleCatalog.byId(settings.scaleId)
             val notes = FretboardMap.notes(settings.tuning, settings.scaleRoot, scale, settings.scaleFrets)
-            val sequence = runSequence(scale.size)
-            val focusDegree = if (interactive && sequence.isNotEmpty()) sequence[step.mod(sequence.size)] else -1
+            val positions = FretboardMap.positions(settings.tuning, settings.scaleRoot, scale, settings.scaleFrets)
+            val inPositionMode = g.positionMode && positions.isNotEmpty()
+
+            var focusDegree = -1
+            var focusCells: Set<Int> = emptySet()
+            var activeBox = -1
+            var cells: Set<Int>? = null
+
+            if (inPositionMode) {
+                if (g.interactive) {
+                    val run = FretboardMap.run(positions)
+                    val current = run.getOrNull(if (run.isEmpty()) 0 else g.step.mod(run.size))
+                    activeBox = current?.position ?: resolveBox(g.positionChoice, positions)
+                    focusDegree = current?.degree ?: -1
+                    focusCells = current?.let { setOf(cellKey(it.string, it.fret)) } ?: emptySet()
+                } else {
+                    activeBox = resolveBox(g.positionChoice, positions)
+                }
+                cells = positions.getOrNull(activeBox)?.cells
+            } else if (g.interactive) {
+                val sequence = runSequence(scale.size)
+                focusDegree = if (sequence.isNotEmpty()) sequence[g.step.mod(sequence.size)] else -1
+                focusCells = focusCells(notes, focusDegree, settings.scaleFocusNearest, g.lastMidi)
+            }
+
             ScalesUiState(
                 loaded = true,
                 settings = settings,
@@ -71,25 +125,34 @@ class ScalesViewModel(
                 spelling = ScaleSpeller.spell(settings.scaleRoot, scale),
                 notes = notes,
                 highlighted = marks.filterTo(HashSet()) { it in 1 until scale.size },
-                interactive = interactive,
+                interactive = g.interactive,
                 focusDegree = focusDegree,
-                focusCells = focusCells(notes, focusDegree, settings.scaleFocusNearest, lastMidi),
+                focusCells = focusCells,
+                positionMode = inPositionMode,
+                positionCount = positions.size,
+                positionIndex = activeBox,
+                positionCells = cells,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), ScalesUiState())
 
     fun setRoot(pitchClass: Int) {
+        resetGuide()
+        positionChoice.value = -1
         viewModelScope.launch { settingsStore.setScaleRoot(pitchClass) }
     }
 
     fun setScale(id: String) {
         if (id != uiState.value.scale.id) {
             highlighted.value = emptySet()
+            positionChoice.value = -1
             resetGuide()
         }
         viewModelScope.launch { settingsStore.setScale(id) }
     }
 
     fun setFrets(frets: Int) {
+        positionChoice.value = -1
+        resetGuide()
         viewModelScope.launch { settingsStore.setScaleFrets(frets) }
     }
 
@@ -97,10 +160,44 @@ class ScalesViewModel(
         viewModelScope.launch { settingsStore.setScaleLabels(labels) }
     }
 
-    /** Active/désactive le mode interactif (guide de gamme au micro). Remet le guide au début. */
+    /**
+     * Active/désactive le mode interactif (guide de gamme au micro). À l'activation en mode
+     * positions, le guide démarre sur la position affichée (et non à la première).
+     */
     fun toggleInteractive() {
-        interactive.update { !it }
+        val turningOn = !interactive.value
+        interactive.value = turningOn
+        lastMidi.value = -1
+        lastHeardPc = -1
+        step.value = if (turningOn && positionMode.value) startStepForBox(resolveBox(positionChoice.value, currentPositions())) else 0
+    }
+
+    /** Active/désactive le mode positions (une box à la fois). Repart de la box de la fondamentale. */
+    fun togglePositions() {
+        positionMode.update { !it }
+        positionChoice.value = -1
         resetGuide()
+    }
+
+    /** Sélectionne la box [index] à la main ; en mode interactif, le guide reprend au début de la box. */
+    fun setPosition(index: Int) {
+        positionChoice.value = index
+        if (interactive.value) {
+            step.value = startStepForBox(index)
+            lastHeardPc = -1
+        }
+    }
+
+    /** Positions de la gamme pour les réglages courants. */
+    private fun currentPositions(): List<FretPosition> {
+        val s = uiState.value
+        return FretboardMap.positions(s.settings.tuning, s.settings.scaleRoot, s.scale, s.settings.scaleFrets)
+    }
+
+    /** Indice, dans le parcours, de la première note de la box [box] (0 si absente). */
+    private fun startStepForBox(box: Int): Int {
+        val start = FretboardMap.run(currentPositions()).indexOfFirst { it.position == box }
+        return if (start >= 0) start else 0
     }
 
     /** Note jouée détectée (hauteur MIDI). Fait avancer le guide si elle correspond au focus. */
@@ -110,6 +207,17 @@ class ScalesViewModel(
         if (pc == lastHeardPc) return // même note qui dure : ne compte qu'une fois
         lastHeardPc = pc
         val s = uiState.value
+        if (s.positionMode) {
+            val positions = FretboardMap.positions(s.settings.tuning, s.settings.scaleRoot, s.scale, s.settings.scaleFrets)
+            val run = FretboardMap.run(positions)
+            if (run.isEmpty()) return
+            val current = run[step.value.mod(run.size)]
+            if (pc == current.midi.mod(12)) {
+                lastMidi.value = current.midi
+                step.value = (step.value + 1).mod(run.size)
+            }
+            return
+        }
         val degree = s.focusDegree
         if (degree < 0 || degree >= s.scale.intervals.size) return
         val focusPc = (s.settings.scaleRoot + s.scale.intervals[degree]).mod(12)
@@ -156,6 +264,10 @@ class ScalesViewModel(
 
         /** Clé compacte d'une case (corde, frette) pour l'ensemble des cases en focus. */
         fun cellKey(string: Int, fret: Int): Int = string * 100 + fret
+
+        /** Box à afficher : le choix manuel s'il est valide, sinon la box de la fondamentale. */
+        private fun resolveBox(choice: Int, positions: List<FretPosition>): Int =
+            if (choice in positions.indices) choice else FretboardMap.rootPosition(positions)
 
         /**
          * Séquence des degrés du guide : montée 0…n−1, fondamentale à l'octave, puis descente

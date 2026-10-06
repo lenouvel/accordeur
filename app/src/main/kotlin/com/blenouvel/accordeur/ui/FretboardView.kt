@@ -54,12 +54,16 @@ private val RIGHT_MARGIN = 8.dp
 private val MIN_ROW = 31.dp
 private val MAX_ROW = 64.dp
 
+/** Opacité des notes hors de la box active en mode positions. */
+private const val DIMMED_ALPHA = 0.16f
+
 /**
  * Manche vertical (tête en haut, corde grave à gauche — à droite en mode gaucher).
  * La hauteur des cases s'adapte à l'écran ; au-delà, le manche défile verticalement.
  *
  * [degreeLabels] : texte de chaque degré (nom de note ou intervalle). La fondamentale est dessinée
  * dans la couleur d'accent, les degrés de [highlighted] en ambre, les notes à vide cerclées.
+ * [positionCells] : si non nul, les notes qui n'appartiennent pas à cet ensemble (box) sont atténuées.
  * Toucher une case appelle [onTap] (corde, case), qu'elle appartienne ou non à la gamme.
  */
 @Composable
@@ -70,6 +74,7 @@ fun FretboardView(
     degreeLabels: List<String>,
     highlighted: Set<Int>,
     focusCells: Set<Int> = emptySet(),
+    positionCells: Set<Int>? = null,
     leftHanded: Boolean,
     description: String,
     onTap: (string: Int, fret: Int) -> Unit,
@@ -202,28 +207,30 @@ fun FretboardView(
                     )
                 }
 
-                // Notes de la gamme.
+                // Notes de la gamme (celles hors de la box active sont atténuées).
                 for (note in notes) {
                     val center = Offset(stringX(note.string), rowCenter(note.fret))
                     val open = note.fret == 0
                     val radius = (if (open) openRadius else fretRadius).toPx()
+                    val dim = if (positionCells == null || note.string * 100 + note.fret in positionCells) 1f else DIMMED_ALPHA
                     val fill = when {
                         note.degree == 0 -> scheme.primary
                         note.degree in highlighted -> tunerColors.warning
                         else -> scheme.surfaceContainerHighest
-                    }
+                    }.copy(alpha = dim)
                     val ink = when {
                         note.degree == 0 -> scheme.onPrimary
                         note.degree in highlighted -> Color(0xFF1B1300)
                         else -> scheme.onSurface
-                    }
+                    }.copy(alpha = dim)
                     val layouts = if (open) openLabels else fretLabels
                     val layout = layouts.getOrNull(note.degree) ?: continue
                     if (open) {
                         // Corde à vide : pastille cerclée.
-                        drawCircle(fill.copy(alpha = 0.22f), radius, center)
+                        drawCircle(fill.copy(alpha = 0.22f * dim), radius, center)
                         drawCircle(fill, radius - 1.dp.toPx(), center, style = Stroke(2.dp.toPx()))
-                        drawLabel(layout, if (note.degree == 0 || note.degree in highlighted) fill else scheme.onSurface, center)
+                        val openInk = if (note.degree == 0 || note.degree in highlighted) fill else scheme.onSurface.copy(alpha = dim)
+                        drawLabel(layout, openInk, center)
                     } else {
                         drawCircle(fill, radius, center)
                         drawLabel(layout, ink, center)

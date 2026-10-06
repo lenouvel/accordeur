@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -164,14 +165,19 @@ private fun PianoKey(
     }
 }
 
-/** Choix de la gamme ou du mode, groupés par famille, avec leurs degrés. */
+/** Choix de la gamme ou du mode, groupés par famille, avec leurs degrés. Les dernières gammes
+ *  choisies sont reprises en tête pour éviter de faire défiler. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScalePickerSheet(
     selected: ScaleType,
+    recentScaleIds: List<String>,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val recentTitle = stringResource(R.string.section_recent)
+    val recent = recentScaleIds.mapNotNull { id -> ScaleCatalog.all.firstOrNull { it.id == id } }
+    val pick: (String) -> Unit = { onSelect(it); onDismiss() }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(
             contentPadding = PaddingValues(bottom = 24.dp),
@@ -184,33 +190,42 @@ fun ScalePickerSheet(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
             }
+            if (recent.size >= 2) scaleSection(recentTitle, recent, selected.id, "recent", pick)
             for ((category, scales) in ScaleCatalog.byCategory) {
-                item(key = "category-${category.name}") {
-                    Text(
-                        text = category.title,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
-                    )
-                }
-                items(scales, key = { it.id }) { scale ->
-                    val isSelected = scale.id == selected.id
-                    ListItem(
-                        headlineContent = {
-                            Text(scale.name, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal)
-                        },
-                        supportingContent = { Text(scale.degrees.joinToString("  ")) },
-                        leadingContent = { RadioButton(selected = isSelected, onClick = null) },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        modifier = Modifier
-                            .clickable {
-                                onSelect(scale.id)
-                                onDismiss()
-                            }
-                            .padding(horizontal = 8.dp),
-                    )
-                }
+                scaleSection(category.title, scales, selected.id, "category-${category.name}", pick)
             }
         }
+    }
+}
+
+/** Un groupe de gammes (récents ou famille) : un titre puis les gammes avec leurs degrés. */
+private fun LazyListScope.scaleSection(
+    title: String,
+    scales: List<ScaleType>,
+    selectedId: String,
+    keyPrefix: String,
+    onPick: (String) -> Unit,
+) {
+    item(key = "$keyPrefix-header") {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
+        )
+    }
+    items(scales, key = { "$keyPrefix-${it.id}" }) { scale ->
+        val isSelected = scale.id == selectedId
+        ListItem(
+            headlineContent = {
+                Text(scale.name, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal)
+            },
+            supportingContent = { Text(scale.degrees.joinToString("  ")) },
+            leadingContent = { RadioButton(selected = isSelected, onClick = null) },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            modifier = Modifier
+                .clickable { onPick(scale.id) }
+                .padding(horizontal = 8.dp),
+        )
     }
 }

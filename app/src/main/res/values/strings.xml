@@ -89,6 +89,8 @@
     <string name="settings_scale_focus_nearest">Gammes interactives : focus sur la case la plus proche</string>
     <string name="scales_interactive">Interactif</string>
     <string name="cd_scales_interactive">Mode interactif : détecte les notes jouées et met en focus la note suivante de la gamme</string>
+    <string name="scales_positions">Positions</string>
+    <string name="cd_scales_positions">Mode positions : n\'éclaire qu\'une forme (box) à la fois, le reste du manche est atténué. En mode interactif, finir une forme fait passer à la suivante.</string>
     <string name="settings_mic_source">Source du micro</string>
     <string name="settings_mic_source_desc">Le téléphone peut filtrer les graves selon la source. Si la grosse corde passe mal, essayez-en une autre et jouez-la : le test ci-dessous montre ce qui est entendu.</string>
     <string name="mic_auto">Automatique</string>
@@ -137,6 +139,7 @@
     <string name="nav_tuner">Accordeur</string>
     <string name="nav_scales">Gammes</string>
     <string name="nav_spectrum">Spectre</string>
+    <string name="nav_metronome">Métronome</string>
 
     <!-- Spectre -->
     <string name="spectrum_hint">Jouez une note ou un accord</string>
@@ -147,6 +150,9 @@
     <string name="scales_scale">Gamme / mode</string>
     <string name="scales_tuning">Accordage</string>
     <string name="scales_frets">Cases</string>
+    <string name="scales_position_index">Position %1$d / %2$d</string>
+    <string name="cd_position_prev">Position précédente</string>
+    <string name="cd_position_next">Position suivante</string>
     <string name="labels_notes">Notes</string>
     <string name="labels_degrees">Degrés</string>
     <string name="left_handed">Gaucher</string>
@@ -155,4 +161,59 @@
     <string name="formula_description">Formule : %1$s</string>
     <string name="cd_highlight_degree">Degré %1$s (%2$s) : mettre en évidence sur le manche</string>
     <string name="fretboard_description">Manche : %1$s %2$s, accordage %3$s, %4$d cases. Touchez une case pour l\'entendre.</string>
+
+    <!-- Métronome -->
+    <string name="metro_bpm_label">BPM</string>
+    <string name="metro_tap">Tap</string>
+    <string name="cd_metro_start">Démarrer le métronome</string>
+    <string name="cd_metro_stop">Arrêter le métronome</string>
+    <string name="cd_decrease">Diminuer</string>
+    <string name="cd_increase">Augmenter</string>
+    <string name="metro_beats">Temps par mesure</string>
+    <string name="metro_subdivision">Subdivision</string>
+    <string name="sub_quarter">Noire</string>
+    <string name="sub_eighths">Deux croches</string>
+    <string name="sub_triplet">Triolet de croches</string>
+    <string name="sub_sixteenths">Quatre doubles-croches</string>
+    <string name="sub_8_16_16">Croche + deux doubles-croches</string>
+    <string name="sub_16_16_8">Deux doubles-croches + croche</string>
+    <string name="sub_triplet_q_e">Triolet : noire + croche</string>
+    <string name="sub_16_8_16">Double, croche, double</string>
+    <string name="sub_dotted8_16">Croche pointée + double-croche</string>
+    <string name="sub_rest8_8">Demi-soupir + croche</string>
+    <string name="sub_triplet_e_r_e">Triolet : croche, silence, croche</string>
+    <string name="sub_16_dotted8">Double-croche + croche pointée</string>
+    <string name="sub_quintuplet">Quintolet</string>
+    <string name="sub_septuplet">Septolet</string>
+    <string name="sub_sextuplet">Sextolet (3+3)</string>
+    <string name="sub_sextuplet_2">Sextolet (2+2+2)</string>
+    <string name="metro_accent">Accent sur le 1er temps</string>
+    <string name="metro_sound">Son</string>
+    <string name="sound_click">Clic</string>
+    <string name="sound_wood">Bois</string>
+    <string name="sound_beep">Bip</string>
+    <string name="sound_clave">Claves</string>
+    <string name="sound_cowbell">Cloche</string>
+    <string name="metro_measure">Mesure %1$d</string>
+    <string name="metro_count_in_running">Décompte %1$d</string>
+    <string name="metro_count_in">Décompte (mesures)</string>
+    <string name="metro_silent_title">Mesures silencieuses</string>
+    <string name="metro_silent_desc">Alterne des mesures jouées et des mesures muettes pour travailler le tempo interne.</string>
+    <string name="metro_silent_play">Jouées</string>
+    <string name="metro_silent_mute">Muettes</string>
+    <string name="metro_auto_title">Automation du tempo</string>
+    <string name="metro_auto_desc">Fait évoluer le tempo du tempo initial au tempo final, par paliers, selon une loi de variation.</string>
+    <string name="metro_auto_start">Tempo initial</string>
+    <string name="metro_auto_target">Tempo final</string>
+    <string name="metro_auto_step">Paliers (BPM)</string>
+    <string name="metro_auto_bars">Durée (mesures)</string>
+    <string name="metro_auto_loop">Répéter le décompte</string>
+    <string name="metro_auto_law">Loi de variation</string>
+    <string name="law_linear">Linéaire</string>
+    <string name="law_accel">Accélération</string>
+    <string name="law_decel">Décélération</string>
+    <string name="law_sine">En S (sinusoïdale)</string>
+    <string name="law_triangle">Aller-retour</string>
+    <string name="law_step">Par paliers</string>
+    <string name="metro_enable">Activer</string>
 </resources>

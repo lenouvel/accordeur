@@ -49,12 +49,15 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.blenouvel.accordeur.audio.AudioEngine
+import com.blenouvel.accordeur.audio.Metronome
 import com.blenouvel.accordeur.audio.ReferenceTone
 import com.blenouvel.accordeur.data.SettingsStore
 import com.blenouvel.accordeur.data.SoundBank
 import com.blenouvel.accordeur.data.ThemeMode
 import com.blenouvel.accordeur.model.NoteMapper
 import com.blenouvel.accordeur.ui.AppNavigationBar
+import com.blenouvel.accordeur.ui.MetronomeActions
+import com.blenouvel.accordeur.ui.MetronomeScreen
 import com.blenouvel.accordeur.ui.ScalesActions
 import com.blenouvel.accordeur.ui.ScalesScreen
 import com.blenouvel.accordeur.ui.SettingsActions
@@ -80,6 +83,9 @@ class MainActivity : ComponentActivity() {
             val scalesViewModel: ScalesViewModel = viewModel {
                 ScalesViewModel(settingsStore = SettingsStore(applicationContext), tone = ReferenceTone())
             }
+            val metronomeViewModel: MetronomeViewModel = viewModel {
+                MetronomeViewModel(settingsStore = SettingsStore(applicationContext), engine = Metronome())
+            }
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val darkTheme = when (state.settings.theme) {
                 ThemeMode.DARK -> true
@@ -96,14 +102,19 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             AccordeurTheme(darkTheme = darkTheme, dynamicColor = state.settings.dynamicColor) {
-                AccordeurApp(viewModel, scalesViewModel, state)
+                AccordeurApp(viewModel, scalesViewModel, metronomeViewModel, state)
             }
         }
     }
 }
 
 @Composable
-private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewModel, state: TunerUiState) {
+private fun AccordeurApp(
+    viewModel: TunerViewModel,
+    scalesViewModel: ScalesViewModel,
+    metronomeViewModel: MetronomeViewModel,
+    state: TunerUiState,
+) {
     val context = LocalContext.current
     var granted by rememberSaveable { mutableStateOf(hasMicPermission(context)) }
     var askedOnce by rememberSaveable { mutableStateOf(false) }
@@ -133,14 +144,22 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
     }
 
     val scalesState by scalesViewModel.uiState.collectAsStateWithLifecycle()
+    val metronomeState by metronomeViewModel.uiState.collectAsStateWithLifecycle()
 
     // Micro actif pour l'accordeur (et ses réglages), le spectre, et la vue Gammes en mode
-    // interactif : start en onResume, stop en onPause ou en quittant.
-    val micActive = granted && (screen != Page.SCALES || scalesState.interactive)
+    // interactif : start en onResume, stop en onPause ou en quittant. Jamais sur le métronome.
+    val micActive = granted && screen != Page.METRONOME && (screen != Page.SCALES || scalesState.interactive)
     if (micActive) {
         LifecycleResumeEffect(viewModel) {
             viewModel.start()
             onPauseOrDispose { viewModel.stop() }
+        }
+    }
+    // Le métronome ne sonne que sur sa page : on l'arrête en la quittant ou en arrière-plan
+    // (jamais démarré automatiquement — c'est le bouton Lecture qui le lance).
+    if (screen == Page.METRONOME) {
+        LifecycleResumeEffect(metronomeViewModel) {
+            onPauseOrDispose { metronomeViewModel.stop() }
         }
     }
     // Mode interactif Gammes : la note détectée par l'accordeur fait avancer le guide de gamme.
@@ -209,9 +228,29 @@ private fun AccordeurApp(viewModel: TunerViewModel, scalesViewModel: ScalesViewM
                             onFretsChange = scalesViewModel::setFrets,
                             onLabelsChange = scalesViewModel::setLabels,
                             onToggleInteractive = scalesViewModel::toggleInteractive,
+                            onTogglePositions = scalesViewModel::togglePositions,
+                            onPositionChange = scalesViewModel::setPosition,
                             onToggleDegree = scalesViewModel::toggleDegree,
                             onPlay = scalesViewModel::play,
                             onOpenTunings = { showTunings = true },
+                            onOpenSettings = openSettings,
+                        ),
+                    )
+                } else if (screen == Page.METRONOME) {
+                    MetronomeScreen(
+                        state = metronomeState,
+                        actions = MetronomeActions(
+                            onToggleRun = metronomeViewModel::toggleRun,
+                            onBpmChange = metronomeViewModel::setBpm,
+                            onNudgeBpm = metronomeViewModel::nudgeBpm,
+                            onTap = metronomeViewModel::tap,
+                            onBeatsChange = metronomeViewModel::setBeatsPerMeasure,
+                            onSubdivisionChange = metronomeViewModel::setSubdivision,
+                            onAccentChange = metronomeViewModel::setAccentFirst,
+                            onSoundChange = metronomeViewModel::setSound,
+                            onCountInChange = metronomeViewModel::setCountInBars,
+                            onSilentChange = metronomeViewModel::setSilent,
+                            onAutomationChange = metronomeViewModel::setAutomation,
                             onOpenSettings = openSettings,
                         ),
                     )

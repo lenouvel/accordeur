@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,13 +25,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.blenouvel.accordeur.Page
 import com.blenouvel.accordeur.R
 
 /**
- * Barre de navigation compacte (48 dp au lieu des 80 dp de Material) : icône et libellé sur une
- * ligne, la page active dans une pastille. Laisse la hauteur au manche et au spectre.
+ * Barre de navigation compacte (48 dp au lieu des 80 dp de Material) : icônes seules, la page active
+ * dans une pastille. Pas de libellé (illisible à quatre onglets) ; le nom reste en description
+ * d'accessibilité.
  */
 @Composable
 fun AppNavigationBar(current: Page, onSelect: (Page) -> Unit) {
@@ -49,6 +51,7 @@ fun AppNavigationBar(current: Page, onSelect: (Page) -> Unit) {
         ) {
             NavItem(Page.TUNER, AppIcons.Tuner, R.string.nav_tuner, current, onSelect)
             NavItem(Page.SCALES, AppIcons.Fretboard, R.string.nav_scales, current, onSelect)
+            NavItem(Page.METRONOME, AppIcons.Metronome, R.string.nav_metronome, current, onSelect)
             NavItem(Page.SPECTRUM, AppIcons.Spectrum, R.string.nav_spectrum, current, onSelect)
         }
     }
@@ -58,32 +61,27 @@ fun AppNavigationBar(current: Page, onSelect: (Page) -> Unit) {
 private fun RowScope.NavItem(page: Page, icon: ImageVector, label: Int, current: Page, onSelect: (Page) -> Unit) {
     val selected = current == page
     val colors = MaterialTheme.colorScheme
+    val text = stringResource(label)
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .weight(1f)
             .fillMaxHeight()
-            .selectable(selected = selected, onClick = { onSelect(page) }, role = Role.Tab),
+            .selectable(selected = selected, onClick = { onSelect(page) }, role = Role.Tab)
+            .semantics { contentDescription = text },
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        Box(
+            contentAlignment = Alignment.Center,
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
                 .background(if (selected) colors.secondaryContainer else Color.Transparent)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = stringResource(label),
-                style = MaterialTheme.typography.labelLarge,
-                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-                maxLines = 1,
+                modifier = Modifier.size(22.dp),
             )
         }
     }

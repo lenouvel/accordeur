@@ -231,11 +231,27 @@ data class FretNote(
     val midi: Int,
 )
 
+/**
+ * Position (« box ») : la forme qu'on joue sans bouger la main gauche. Sur chaque corde, un petit
+ * nombre de notes consécutives de la gamme (deux, ou trois pour les gammes de plus de six notes),
+ * prises au même rang de gamme d'une corde à l'autre — ce qui donne les boxes classiques, en
+ * escalier, avec un nombre de notes constant par corde (et non un simple rectangle de cases).
+ */
+data class FretPosition(val index: Int, val notes: List<FretNote>) {
+    /** Clés compactes (corde × 100 + case) des notes de la box, pour l'atténuation du manche. */
+    val cells: Set<Int> get() = notes.mapTo(HashSet()) { it.string * 100 + it.fret }
+}
+
+/**
+ * Une note du parcours guidé sur les positions : sa case, son degré, sa hauteur et l'indice de la
+ * position à laquelle elle appartient (pour faire suivre l'affichage).
+ */
+data class RunStep(val string: Int, val fret: Int, val degree: Int, val midi: Int, val position: Int)
+
 /** Notes de la gamme sur tout le manche. */
 object FretboardMap {
     fun notes(tuning: Tuning, rootPitchClass: Int, scale: ScaleType, frets: Int): List<FretNote> {
-        val degreeOf = IntArray(12) { -1 }
-        scale.intervals.forEachIndexed { index, semitones -> degreeOf[(rootPitchClass + semitones).mod(12)] = index }
+        val degreeOf = degreeMap(rootPitchClass, scale)
         val result = ArrayList<FretNote>()
         tuning.strings.forEachIndexed { s, string ->
             for (fret in 0..frets) {
@@ -246,6 +262,78 @@ object FretboardMap {
         }
         return result
     }
+
+    private fun degreeMap(rootPitchClass: Int, scale: ScaleType): IntArray {
+        val degreeOf = IntArray(12) { -1 }
+        scale.intervals.forEachIndexed { index, semitones -> degreeOf[(rootPitchClass + semitones).mod(12)] = index }
+        return degreeOf
+    }
+
+    /**
+     * Positions (« boxes ») de la gamme, de la plus grave à la plus aiguë. La box d'indice p prend,
+     * sur chaque corde, les [perString] notes de la gamme à partir de la p-ième (deux notes, ou
+     * trois au-delà de six notes de gamme). Deux boxes voisines partagent une note par corde ;
+     * il y a autant de boxes que de notes de la gamme sur la corde la plus grave (les dernières,
+     * près de l'aigu, peuvent être partielles).
+     */
+    fun positions(tuning: Tuning, rootPitchClass: Int, scale: ScaleType, frets: Int): List<FretPosition> {
+        val degreeOf = degreeMap(rootPitchClass, scale)
+        val perString = if (scale.size <= 6) 2 else 3
+        val byString = tuning.strings.mapIndexed { s, string ->
+            (0..frets).mapNotNull { fret ->
+                val midi = string.midi + fret
+                val degree = degreeOf[midi.mod(12)]
+                if (degree >= 0) FretNote(s, fret, degree, midi) else null
+            }
+        }
+        val lowCount = byString.firstOrNull()?.size ?: 0
+        if (lowCount == 0) return emptyList()
+        return (0 until lowCount).map { p ->
+            val cells = byString.flatMap { list ->
+                if (p >= list.size) emptyList() else list.subList(p, (p + perString).coerceAtMost(list.size))
+            }
+            FretPosition(p, cells)
+        }
+    }
+
+    /** Indice de la position dont l'ancrage (note la plus grave de la corde grave) est la fondamentale ; sinon 0. */
+    fun rootPosition(positions: List<FretPosition>): Int {
+        val index = positions.indexOfFirst { pos ->
+            pos.notes.filter { it.string == 0 }.minByOrNull { it.fret }?.degree == 0
+        }
+        return if (index >= 0) index else 0
+    }
+
+    /**
+     * Parcours guidé enchaînant les positions en serpentin. La montée alterne le sens d'une box à
+     * l'autre : la première se joue de la corde grave vers l'aiguë (gauche → droite), on descend
+     * d'une case à la box suivante, qu'on joue de l'aiguë vers la grave (droite → gauche), etc. — on
+     * ne revient donc pas à la corde grave entre deux box. Le retour (la gamme à l'envers) suit le
+     * chemin inverse, vers le sillet. Une note partagée par deux box voisines n'est pas rejouée.
+     */
+    fun run(positions: List<FretPosition>): List<RunStep> {
+        if (positions.isEmpty()) return emptyList()
+        val up = ArrayList<RunStep>()
+        for (pos in positions) {
+            // Box de rang pair : cordes grave → aiguë (degrés croissants) ; rang impair : l'inverse
+            // exact — cordes aiguë → grave, frettes décroissantes — pour des degrés décroissants.
+            val ascending = pos.notes.sortedWith(compareBy({ it.string }, { it.fret }))
+            val ordered = if (pos.index % 2 == 0) ascending else ascending.asReversed()
+            appendPath(up, ordered.map { RunStep(it.string, it.fret, it.degree, it.midi, pos.index) })
+        }
+        // Retour « à l'envers » : le chemin inverse, sans répéter les notes des extrémités.
+        val down = if (up.size >= 2) up.asReversed().subList(1, up.size - 1).toList() else emptyList()
+        return up + down
+    }
+
+    /** Ajoute [cells] à [path] en sautant l'éventuelle note identique à la jonction de deux box. */
+    private fun appendPath(path: MutableList<RunStep>, cells: List<RunStep>) {
+        var start = 0
+        if (path.isNotEmpty() && cells.isNotEmpty() && sameCell(path.last(), cells.first())) start = 1
+        for (k in start until cells.size) path += cells[k]
+    }
+
+    private fun sameCell(a: RunStep, b: RunStep): Boolean = a.string == b.string && a.fret == b.fret
 
     /** Nombres de cases proposés. */
     val FRET_COUNTS = listOf(12, 15, 22)

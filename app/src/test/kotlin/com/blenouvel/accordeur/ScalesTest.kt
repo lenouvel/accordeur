@@ -108,6 +108,75 @@ class ScalesTest {
     }
 
     @Test
+    fun positionsHaveConstantNotesPerString() {
+        // Sol mineur pentatonique : la box « racine » est 1 & ♭3 sur Mi, 4 & 5 sur La.
+        val gm = FretboardMap.positions(Presets.STANDARD_6, 7, scale("pentatonic_minor"), 12)
+        val gRoot = gm[FretboardMap.rootPosition(gm)]
+        assertEquals(listOf(0, 1), gRoot.notes.filter { it.string == 0 }.sortedBy { it.fret }.map { it.degree }) // 1, ♭3
+        assertEquals(listOf(2, 3), gRoot.notes.filter { it.string == 1 }.sortedBy { it.fret }.map { it.degree }) // 4, 5
+
+        // Fa mineur pentatonique, box racine : la corde de Sol tient La♭ (♭3) et Si♭ (4), et PAS Do.
+        val fm = FretboardMap.positions(Presets.STANDARD_6, 5, scale("pentatonic_minor"), 12)
+        val fRoot = fm[FretboardMap.rootPosition(fm)]
+        for (s in 0 until 6) assertEquals("corde $s : 2 notes", 2, fRoot.notes.count { it.string == s })
+        val gString = fRoot.notes.filter { it.string == 3 }.sortedBy { it.fret }
+        assertEquals(listOf(1, 3), gString.map { it.fret })
+        assertEquals(listOf(1, 2), gString.map { it.degree }) // ♭3 (La♭) et 4 (Si♭), le Do (case 5) est exclu
+
+        // Invariant général : jamais plus de notes par corde que prévu (2, ou 3 au-delà de 6 notes).
+        for (s in ScaleCatalog.all) {
+            val per = if (s.size <= 6) 2 else 3
+            for (root in 0 until 12) {
+                for (pos in FretboardMap.positions(Presets.STANDARD_6, root, s, 15)) {
+                    for (str in 0 until 6) {
+                        assertTrue("${s.id} sur $root, box ${pos.index}, corde $str", pos.notes.count { it.string == str } <= per)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun runChainsBoxesUpThenDown() {
+        val positions = FretboardMap.positions(Presets.STANDARD_6, 7, scale("pentatonic_minor"), 12)
+        val run = FretboardMap.run(positions)
+        assertTrue(run.isNotEmpty())
+        // Le parcours monte les box (indice croissant) jusqu'au sommet puis les redescend.
+        val boxes = run.map { it.position }
+        val peak = boxes.indexOf(boxes.max())
+        assertTrue("montée jusqu'au sommet", boxes.subList(0, peak + 1).zipWithNext().all { (a, b) -> b >= a })
+        assertTrue("redescente ensuite", boxes.subList(peak, boxes.size).zipWithNext().all { (a, b) -> b <= a })
+        assertEquals(0, boxes.first())
+        assertEquals(0, boxes.last())
+        assertEquals(positions.lastIndex, boxes.max())
+        // Une même case n'est jamais donnée deux fois de suite (jonctions dédoublonnées).
+        assertTrue(run.zipWithNext().none { (a, b) -> a.string == b.string && a.fret == b.fret })
+        // À l'intérieur d'une box en montée, on va de la corde grave vers l'aiguë.
+        val firstBox = run.takeWhile { it.position == 0 }
+        assertTrue(firstBox.zipWithNext().all { (a, b) -> a.string <= b.string })
+    }
+
+    @Test
+    fun runSnakesAcrossPositions() {
+        val positions = FretboardMap.positions(Presets.STANDARD_6, 7, scale("pentatonic_minor"), 12)
+        val run = FretboardMap.run(positions)
+        val upLen = (run.size + 2) / 2 // run = montée + retour (montée inversée, sans les extrémités)
+        val up = run.subList(0, upLen)
+        // Chaque box est parcourue dans un sens monotone : rang pair en degrés croissants (hauteur
+        // croissante), rang impair en degrés décroissants — d'où le retour « 4 ♭3 1 ♭7 5 … » en position 2.
+        for (p in positions.indices) {
+            val midis = up.filter { it.position == p }.map { it.midi }
+            if (midis.size < 2) continue
+            val ok = if (p % 2 == 0) midis.zipWithNext().all { (a, b) -> a < b }
+            else midis.zipWithNext().all { (a, b) -> a > b }
+            assertTrue("box $p : hauteurs monotones", ok)
+        }
+        // On ne revient pas à la corde grave à la jonction : la box 0 finit dans l'aigu, la box 1 y démarre.
+        assertEquals(0, up.first { it.position == 0 }.string)
+        assertEquals(5, up.first { it.position == 1 }.string)
+    }
+
+    @Test
     fun fretboardPositions() {
         val notes = FretboardMap.notes(Presets.STANDARD_6, 0, scale("major"), 12)
         val lowE = notes.filter { it.string == 0 }.map { it.fret }

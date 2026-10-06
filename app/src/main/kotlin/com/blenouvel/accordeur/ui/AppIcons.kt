@@ -114,4 +114,34 @@ object AppIcons {
             }
             .build()
     }
+
+    /** Lecture : triangle plein. */
+    val Play: ImageVector by lazy {
+        ImageVector.Builder("Play", 24.dp, 24.dp, 24f, 24f)
+            .path(fill = ink) {
+                moveTo(8f, 5.5f)
+                lineTo(18.5f, 12f)
+                lineTo(8f, 18.5f)
+                close()
+            }
+            .build()
+    }
+
+    /** Métronome : corps trapézoïdal, balancier penché et son poids. */
+    val Metronome: ImageVector by lazy {
+        ImageVector.Builder("Metronome", 24.dp, 24.dp, 24f, 24f)
+            .path(stroke = ink, strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+                moveTo(9f, 3.5f)
+                lineTo(15f, 3.5f)
+                lineTo(19f, 20.5f)
+                lineTo(5f, 20.5f)
+                close()
+            }
+            .path(stroke = ink, strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round) {
+                moveTo(12f, 19f)
+                lineTo(14.5f, 6.5f)
+            }
+            .path(fill = ink) { dot(14.5f, 6.5f, 1.7f) }
+            .build()
+    }
 }

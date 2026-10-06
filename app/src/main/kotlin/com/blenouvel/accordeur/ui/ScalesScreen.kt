@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,6 +57,8 @@ class ScalesActions(
     val onFretsChange: (Int) -> Unit,
     val onLabelsChange: (FretLabels) -> Unit,
     val onToggleInteractive: () -> Unit,
+    val onTogglePositions: () -> Unit,
+    val onPositionChange: (Int) -> Unit,
     val onToggleDegree: (Int) -> Unit,
     val onPlay: (midi: Int) -> Unit,
     val onOpenTunings: () -> Unit,
@@ -117,7 +121,7 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
             }
             // Notes de la gamme et degrés (toucher un degré le met en évidence).
             DegreeLegend(state, noteNames, actions.onToggleDegree)
-            // Étiquettes · mode interactif · formule
+            // Étiquettes · mode interactif · positions · formule
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LabelsSelector(settings.scaleLabels, actions.onLabelsChange)
                 val interactiveDescription = stringResource(R.string.cd_scales_interactive)
@@ -126,6 +130,13 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
                     onClick = actions.onToggleInteractive,
                     label = { Text(stringResource(R.string.scales_interactive), maxLines = 1, softWrap = false) },
                     modifier = Modifier.semantics { contentDescription = interactiveDescription },
+                )
+                val positionsDescription = stringResource(R.string.cd_scales_positions)
+                FilterChip(
+                    selected = state.positionMode,
+                    onClick = actions.onTogglePositions,
+                    label = { Text(stringResource(R.string.scales_positions), maxLines = 1, softWrap = false) },
+                    modifier = Modifier.semantics { contentDescription = positionsDescription },
                 )
                 Text(
                     text = state.scale.formula,
@@ -137,6 +148,10 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
                         .semantics { contentDescription = formulaDescription },
                 )
             }
+            // Sélecteur de position (box) : n'apparaît qu'en mode positions.
+            if (state.positionMode && state.positionCount > 0) {
+                PositionSelector(state.positionIndex, state.positionCount, actions.onPositionChange)
+            }
 
             if (state.loaded) {
                 val labels = if (settings.scaleLabels == FretLabels.NOTES) noteNames else state.scale.degrees
@@ -147,6 +162,7 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
                     degreeLabels = labels,
                     highlighted = state.highlighted,
                     focusCells = state.focusCells,
+                    positionCells = state.positionCells,
                     leftHanded = settings.leftHanded,
                     description = stringResource(
                         R.string.fretboard_description,
@@ -177,6 +193,7 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
     if (showScales) {
         ScalePickerSheet(
             selected = state.scale,
+            recentScaleIds = settings.recentScaleIds,
             onSelect = actions.onScaleChange,
             onDismiss = { showScales = false },
         )
@@ -251,6 +268,25 @@ private fun FretCountSelector(frets: Int, onChange: (Int) -> Unit) {
                     Text(count.toString())
                 }
             }
+        }
+    }
+}
+
+/** Choix de la position (box) : flèches ◀ ▶ et « Position n / N ». Boucle aux extrémités. */
+@Composable
+private fun PositionSelector(index: Int, count: Int, onChange: (Int) -> Unit) {
+    val current = index.coerceIn(0, count - 1)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        IconButton(onClick = { onChange((current - 1).mod(count)) }) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(R.string.cd_position_prev))
+        }
+        Text(
+            text = stringResource(R.string.scales_position_index, current + 1, count),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        IconButton(onClick = { onChange((current + 1).mod(count)) }) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.cd_position_next))
         }
     }
 }

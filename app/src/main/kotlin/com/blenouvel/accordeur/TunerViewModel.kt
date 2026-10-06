@@ -38,7 +38,7 @@ import java.io.File
 import kotlin.math.abs
 
 /** Page affichée. Le micro sert à l'accordeur (et à ses réglages) et au spectre, pas aux gammes. */
-enum class Page { TUNER, SCALES, SPECTRUM, SETTINGS }
+enum class Page { TUNER, SCALES, SPECTRUM, METRONOME, SETTINGS }
 
 /** État complet de l'écran, recalculé à chaque analyse (~23 fois par seconde). */
 data class TunerUiState(
