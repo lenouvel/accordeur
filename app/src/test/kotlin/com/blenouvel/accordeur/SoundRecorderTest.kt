@@ -99,7 +99,7 @@ class SoundRecorderTest {
             assertEquals(float, sound.float)
             assertEquals(SAMPLE_RATE, sound.sampleRate)
             assertEquals(if (float) "float32" else "pcm16", sheet["encodage"])
-            assertEquals("2", sheet["format"])
+            assertEquals("3", sheet["format"])
             assertEquals("1", sheet["prise"])
             assertEquals("aucun bloc perdu", "0", sheet["blocs_perdus"])
             assertEquals("E2 A2 D3 G3 B3 E4", sheet["accordage"].split('|')[2])
@@ -115,6 +115,10 @@ class SoundRecorderTest {
             assertEquals(seconds, sheet["duree_s"].toDouble(), 1e-3)
             assertTrue("le silence entre les notes est gardé", sheet.frames.count { !it.signal } > 20)
             assertTrue("les deux notes sont dans la prise", sheet.frames.count { !it.frequency.isNaN() } > 20)
+            // Format 3 : bruit de fond et seuil du gate journalisés, seuil adaptatif au-dessus du bruit.
+            val gated = sheet.frames.first { it.signal }
+            assertTrue("bruit de fond journalisé", gated.noiseFloorDb.isFinite())
+            assertTrue("seuil du gate au-dessus du bruit de fond", gated.thresholdDb > gated.noiseFloorDb)
         }
     }
 

@@ -8,8 +8,17 @@ import java.nio.ByteOrder
 object BankFiles {
     class Sound(val samples: FloatArray, val sampleRate: Int, val float: Boolean)
 
-    /** Une trame de la fiche : ce que l'accordeur affichait. */
-    class Frame(val time: Double, val levelDb: Double, val signal: Boolean, val frequency: Double, val holding: Boolean, val poly: String)
+    /** Une trame de la fiche : ce que l'accordeur affichait. Bruit/seuil : NaN avant le format 3. */
+    class Frame(
+        val time: Double,
+        val levelDb: Double,
+        val signal: Boolean,
+        val frequency: Double,
+        val holding: Boolean,
+        val poly: String,
+        val noiseFloorDb: Double = Double.NaN,
+        val thresholdDb: Double = Double.NaN,
+    )
 
     class Sheet(val keys: Map<String, String>, val frames: List<Frame>) {
         operator fun get(key: String): String = keys[key] ?: error("clé absente : $key")
@@ -74,6 +83,7 @@ object BankFiles {
                 continue
             }
             val c = line.split('\t')
+            fun db(i: Int): Double = c.getOrNull(i)?.takeIf { it != "-" && it.isNotBlank() }?.toDouble() ?: Double.NaN
             frames += Frame(
                 time = c[0].toDouble(),
                 levelDb = c[1].toDouble(),
@@ -81,6 +91,8 @@ object BankFiles {
                 frequency = if (c[3] == "-") Double.NaN else c[3].toDouble(),
                 holding = c[4] == "1",
                 poly = c.getOrElse(6) { "" },
+                noiseFloorDb = db(7),
+                thresholdDb = db(8),
             )
         }
         return Sheet(keys, frames)

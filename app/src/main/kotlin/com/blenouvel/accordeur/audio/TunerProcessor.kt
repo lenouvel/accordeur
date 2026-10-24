@@ -38,6 +38,10 @@ data class TunerFrame(
     val poly: PolyReading?,
     /** Spectre et notes entendues (page Spectre), sinon null. */
     val spectrum: SpectrumFrame? = null,
+    /** Bruit de fond estimé par le gate (dBFS), NaN si non renseigné. */
+    val noiseFloorDb: Double = Double.NaN,
+    /** Seuil d'ouverture du gate à cette trame (dBFS), NaN si non renseigné. */
+    val thresholdDb: Double = Double.NaN,
 ) {
     val hasPitch: Boolean get() = !frequency.isNaN()
 }
@@ -186,6 +190,8 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
             clarity = stabilizer.clarity,
             holding = stabilizer.holding,
             poly = poly,
+            noiseFloorDb = stabilizer.noiseFloorDb,
+            thresholdDb = stabilizer.gateThresholdDb,
         )
     }
 
@@ -211,7 +217,10 @@ class TunerProcessor(val sampleRate: Int = PitchDetector.SAMPLE_RATE) {
         }
         stabilizer.updatePitch(null, time, 0.0, targets.stringsHz)
         val gate = stabilizer.gateOpen
-        return TunerFrame(time, levelDb, gate, Double.NaN, Double.NaN, 0.0, false, null, analyzer.analyze(window, gate))
+        return TunerFrame(
+            time, levelDb, gate, Double.NaN, Double.NaN, 0.0, false, null, analyzer.analyze(window, gate),
+            noiseFloorDb = stabilizer.noiseFloorDb, thresholdDb = stabilizer.gateThresholdDb,
+        )
     }
 
     /**

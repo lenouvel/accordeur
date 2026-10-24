@@ -110,7 +110,9 @@ class SoundBank(context: Context) {
               ne fournit que du 16 bits.
             - le .txt du même nom : téléphone, source micro, réglages (mode, accordage, La de
               référence, corde verrouillée), puis ce que l'accordeur a affiché à chaque trame
-              (~43 ms) : niveau, son détecté, fréquence, valeur maintenue, tableau poly.
+              (~43 ms) : niveau, son détecté, fréquence, valeur maintenue, clarté, tableau poly,
+              puis le bruit de fond estimé et le seuil du gate (dBFS) — le gate est adaptatif, pas
+              un seuil fixe.
 
             Rejeu dans l'accordeur sur ordinateur (non-régression) : décompresser le dossier
             « banque » à la racine du projet sous le nom « testbank », puis lancer

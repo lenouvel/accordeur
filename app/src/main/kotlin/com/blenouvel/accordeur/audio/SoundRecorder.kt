@@ -394,6 +394,9 @@ class SoundRecorder(
                     }
                 }
             }
+            // Bruit de fond et seuil du gate (dBFS) : le gate est adaptatif, pas un seuil fixe.
+            log.append('\t').append(if (frame.noiseFloorDb.isNaN()) "-" else String.format(Locale.ROOT, "%.1f", frame.noiseFloorDb))
+            log.append('\t').append(if (frame.thresholdDb.isNaN()) "-" else String.format(Locale.ROOT, "%.1f", frame.thresholdDb))
             log.append('\n')
         }
 
@@ -443,7 +446,7 @@ class SoundRecorder(
                 append("accordage=").append(context.tuningId).append('|').append(context.tuningName).append('|').append(context.tuningNotes).append('\n')
                 append("blocs_perdus=").append(droppedNow - droppedAtStart).append('\n')
                 append("[trames]\n")
-                append("t_s\tniveau_db\tson\tfreq_hz\tmaintenu\tclarte\tpoly\n")
+                append("t_s\tniveau_db\tson\tfreq_hz\tmaintenu\tclarte\tpoly\tbruit_db\tseuil_db\n")
                 append(log)
             }
             File(directory, "$name.txt").writeText(sheet)
@@ -476,8 +479,11 @@ class SoundRecorder(
         /** Plafond de la banque : ~90 min de son en float 48 kHz. */
         const val MAX_BANK_BYTES = 1L shl 30
 
-        /** 2 : prises au bouton (continues). 1 : sons découpés automatiquement (versions précédentes). */
-        const val SHEET_FORMAT = 2
+        /**
+         * 3 : ajoute les colonnes bruit de fond et seuil du gate (dBFS) à chaque trame.
+         * 2 : prises au bouton (continues). 1 : sons découpés automatiquement (versions précédentes).
+         */
+        const val SHEET_FORMAT = 3
         const val FLOAT_HEADER = 58
         const val PCM_HEADER = 44
 

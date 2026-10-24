@@ -31,6 +31,10 @@ class PitchStabilizer(
     var gateOpen = false
         private set
 
+    /** Seuil (dBFS) auquel le niveau est comparé à la trame courante (hystérésis comprise). */
+    var gateThresholdDb = ABSOLUTE_GATE_DB
+        private set
+
     /** Nombre d'attaques détectées depuis la création (utile pour le mode poly). */
     var onsetCount = 0
         private set
@@ -105,7 +109,9 @@ class PitchStabilizer(
 
         val openThreshold = max(ABSOLUTE_GATE_DB, noiseFloorDb + GATE_MARGIN_DB)
         val wasOpen = gateOpen
-        gateOpen = if (gateOpen) levelDb > openThreshold - GATE_HYSTERESIS_DB else levelDb > openThreshold
+        val threshold = if (wasOpen) openThreshold - GATE_HYSTERESIS_DB else openThreshold
+        gateThresholdDb = threshold
+        gateOpen = levelDb > threshold
 
         val jump = hopLevelDb - previousHopLevelDb
         previousHopLevelDb = hopLevelDb
@@ -134,7 +140,8 @@ class PitchStabilizer(
         // même gate fermé. Un ronflement ou du bruit ne produit pas une telle série : la note n'est
         // pas maintenue sur du faux (on préfère ne rien afficher), et la garde d'octave/continuité
         // ci-dessous écarte une mesure aberrante isolée.
-        val sustain = !gateOpen && acceptedInSegment > 0 && estimate != null && estimate.partials >= SUSTAIN_MIN_PARTIALS
+        val sustain = !gateOpen && acceptedInSegment > 0 && estimate != null &&
+            estimate.partials >= sustainMinPartials(estimate.frequency)
         val valid = (gateOpen || sustain) && estimate != null && estimate.isValid
         if (warmupHops > 0) {
             warmupHops--
@@ -242,6 +249,25 @@ class PitchStabilizer(
         return false
     }
 
+    /**
+     * Partiels nets exigés pour maintenir une note établie quand le gate (niveau global) s'est
+     * refermé — une corde qui sonne encore mais faiblit. Dépend du registre : une corde grave étale
+     * beaucoup d'harmoniques dans la bande analysée (on attend une série franche, qu'un ronflement
+     * ou du bruit — série courte ou incohérente — ne produit pas) ; une note aiguë n'en a que
+     * quelques-unes (14 serait impossible à atteindre). Les paliers suivent ceux de
+     * [PitchDetector.minPartials], mais plus stricts (on exige plus de preuve hors gate qu'à
+     * l'ouverture). -Dsustain.partials=… force une valeur unique (banc).
+     */
+    private fun sustainMinPartials(frequency: Double): Int {
+        SUSTAIN_PARTIALS_OVERRIDE?.let { return it }
+        return when {
+            frequency <= 120.0 -> 6
+            frequency <= 240.0 -> 4
+            frequency <= 480.0 -> 3
+            else -> 2
+        }
+    }
+
     private fun startSegment(afterSound: Boolean) {
         resetFilters()
         reference = Double.NaN
@@ -311,12 +337,10 @@ class PitchStabilizer(
         const val ONSET_REFRACTORY_S = 0.15
 
         /**
-         * Nombre de partiels francs qui suffit à maintenir une note établie même quand le gate
-         * (niveau global) s'est refermé — une corde grave qui sonne encore mais faiblit. Assez haut
-         * pour qu'un ronflement ou du bruit (série courte ou incohérente) ne maintienne rien.
-         * Réglable au banc par -Dsustain.partials=… (sinon la valeur par défaut).
+         * Forçage d'un seuil de maintien unique, tous registres confondus (banc :
+         * -Dsustain.partials=…) ; null = seuil dépendant du registre ([sustainMinPartials]).
          */
-        val SUSTAIN_MIN_PARTIALS = System.getProperty("sustain.partials")?.toIntOrNull() ?: 14
+        val SUSTAIN_PARTIALS_OVERRIDE = System.getProperty("sustain.partials")?.toIntOrNull()
 
         private const val MEDIAN_SIZE = 5
         private const val OCTAVE_GUARD_READINGS = 3
