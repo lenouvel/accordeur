@@ -69,6 +69,9 @@ class MetronomeViewModel(
     private val _timing = MutableStateFlow<TimingReading?>(null)
     private val _aux = MutableStateFlow(TempoAux())
 
+    /** Niveau d'entrée micro (0..1) pour le vumètre ; isolé du reste pour ne pas rafraîchir tout l'écran. */
+    val inputLevel: StateFlow<Float> = listener.level
+
     // État touché uniquement depuis le dispatcher principal (collecteurs + start/stop) : pas de course.
     private var currentSettings = Settings()
     private var listenerRunning = false

@@ -13,8 +13,12 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.max
 
 /**
@@ -32,6 +36,10 @@ class TempoListener(context: Context) {
     private val _onsets = MutableSharedFlow<Long>(extraBufferCapacity = 64)
     /** Instants (ns, [SystemClock.elapsedRealtimeNanos]) des attaques détectées. */
     val onsets: SharedFlow<Long> = _onsets
+
+    private val _level = MutableStateFlow(0f)
+    /** Niveau crête d'entrée (0..1, maintien avec décroissance) pour le vumètre. */
+    val level: StateFlow<Float> = _level.asStateFlow()
 
     /** Banque de test : enregistre le son brut pendant l'écoute quand une prise est lancée. */
     val recorder = TempoRecorder(File(appContext.filesDir, TempoRecorder.DIRECTORY)).apply {
@@ -83,6 +91,7 @@ class TempoListener(context: Context) {
             // absorbée par l'offset de calibration, comme la latence de sortie du métronome).
             val startNanos = SystemClock.elapsedRealtimeNanos()
             recorder.start(sampleRate, floatInput, opened.sourceName, startNanos)
+            var hold = 0f
             while (running) {
                 val count = if (shorts == null) {
                     record.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
@@ -99,11 +108,20 @@ class TempoListener(context: Context) {
                     _onsets.tryEmit(startNanos + (timeSec * 1_000_000_000.0).toLong())
                 }
                 recorder.offer(samples, count)
+                // Niveau crête du bloc (maintien + décroissance ~1 s) pour le vumètre.
+                var peak = 0f
+                for (i in 0 until count) {
+                    val a = abs(samples[i])
+                    if (a > peak) peak = a
+                }
+                hold = max(peak, hold * LEVEL_DECAY)
+                _level.value = hold.coerceIn(0f, 1f)
             }
         } catch (e: RuntimeException) {
             Log.e(TAG, "Écoute tempo interrompue", e)
         } finally {
             recorder.stop()
+            _level.value = 0f
             try {
                 record.stop()
             } catch (_: IllegalStateException) {
@@ -161,6 +179,9 @@ class TempoListener(context: Context) {
 
         /** Blocs courts : faible latence de réaction, plusieurs hops d'onset par lecture. */
         const val READ = 1024
+
+        /** Décroissance du maintien crête par lecture (~21 ms) : chute en ~1 s. */
+        const val LEVEL_DECAY = 0.85f
         val SOURCES = intArrayOf(MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC)
         val SAMPLE_RATES = intArrayOf(48_000, 44_100)
         val ENCODINGS = intArrayOf(AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_16BIT)

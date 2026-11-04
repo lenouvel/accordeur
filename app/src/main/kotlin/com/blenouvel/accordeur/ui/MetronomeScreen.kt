@@ -48,6 +48,7 @@ import com.blenouvel.accordeur.model.Subdivision
 import com.blenouvel.accordeur.model.TempoAutomation
 import com.blenouvel.accordeur.model.TempoVisual
 import com.blenouvel.accordeur.ui.theme.NumericStyle
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
 
 /** Actions de la vue « Métronome ». */
@@ -78,7 +79,12 @@ class MetronomeActions(
  * cette page.
  */
 @Composable
-fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions, modifier: Modifier = Modifier) {
+fun MetronomeScreen(
+    state: MetronomeUiState,
+    actions: MetronomeActions,
+    inputLevel: StateFlow<Float>,
+    modifier: Modifier = Modifier,
+) {
     val config = state.config
     Surface(color = MaterialTheme.colorScheme.background, modifier = modifier.fillMaxSize()) {
         Column(
@@ -298,6 +304,8 @@ fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions, modifier
                             color = if (state.recording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                         )
                     }
+                    // Vumètre : régler le volume juste sous le repère d'écrêtage.
+                    VuMeter(inputLevel, Modifier.fillMaxWidth())
                     SectionDesc(
                         if (state.bankTakes > 0) {
                             stringResource(R.string.metro_rec_bank, state.bankTakes, state.bankBytes / (1024 * 1024))

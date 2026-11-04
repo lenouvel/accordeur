@@ -244,6 +244,7 @@ private fun AccordeurApp(
                 } else if (screen == Page.METRONOME) {
                     MetronomeScreen(
                         state = metronomeState,
+                        inputLevel = metronomeViewModel.inputLevel,
                         actions = MetronomeActions(
                             onToggleRun = metronomeViewModel::toggleRun,
                             onBpmChange = metronomeViewModel::setBpm,

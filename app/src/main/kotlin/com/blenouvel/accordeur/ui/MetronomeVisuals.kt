@@ -28,13 +28,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.blenouvel.accordeur.R
 import com.blenouvel.accordeur.audio.MetronomeTick
 import com.blenouvel.accordeur.model.TempoGrader
@@ -42,7 +45,9 @@ import com.blenouvel.accordeur.model.TempoVisual
 import com.blenouvel.accordeur.model.TimingReading
 import com.blenouvel.accordeur.model.TimingVerdict
 import com.blenouvel.accordeur.ui.theme.TunerTheme
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -135,6 +140,47 @@ fun TempoFeedback(
             }
         }
         TempoCaption(reading, active)
+    }
+}
+
+/**
+ * Vumètre horizontal du niveau d'entrée micro (crête, 0..1), avec un repère à 95 % et un voyant
+ * d'écrêtage. Collecte le niveau lui-même pour ne rafraîchir que ce composant (pas tout l'écran).
+ */
+@Composable
+fun VuMeter(level: StateFlow<Float>, modifier: Modifier = Modifier) {
+    val lvl by level.collectAsStateWithLifecycle()
+    val colors = TunerTheme.colors
+    val scheme = MaterialTheme.colorScheme
+    val muted = scheme.onSurfaceVariant
+    val clipping = lvl >= 0.98f
+    val fill = when {
+        lvl >= 0.95f -> colors.offPitch
+        lvl >= 0.85f -> colors.warning
+        else -> colors.inTune
+    }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.metro_input_level),
+                style = MaterialTheme.typography.labelSmall,
+                color = muted,
+                modifier = Modifier.weight(1f),
+            )
+            if (clipping) {
+                Text(stringResource(R.string.metro_input_clip), style = MaterialTheme.typography.labelSmall, color = colors.offPitch)
+            }
+        }
+        Canvas(Modifier.fillMaxWidth().height(12.dp)) {
+            val r = size.height / 2f
+            drawRoundRect(colors.track, cornerRadius = CornerRadius(r, r))
+            val w = size.width * lvl.coerceIn(0f, 1f)
+            if (w > 0f) {
+                drawRoundRect(fill, size = Size(max(w, size.height), size.height), cornerRadius = CornerRadius(r, r))
+            }
+            val x = size.width * 0.95f // seuil d'écrêtage
+            drawLine(scheme.onSurface, Offset(x, 0f), Offset(x, size.height), 2.dp.toPx())
+        }
     }
 }
 

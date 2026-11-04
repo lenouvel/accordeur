@@ -236,4 +236,6 @@
     <string name="metro_rec_stop">■ Arrêter (%1$d s)</string>
     <string name="metro_rec_bank">Banque : %1$d prise(s) · %2$d Mo</string>
     <string name="metro_rec_hint">Lance le métronome, puis enregistre-toi en jouant : le son brut et les repères (temps, clics, attaques) sont gardés pour régler la détection.</string>
+    <string name="metro_input_level">Niveau d\'entrée (micro)</string>
+    <string name="metro_input_clip">⚠ écrêtage</string>
 </resources>
