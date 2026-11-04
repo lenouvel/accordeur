@@ -94,8 +94,16 @@ private fun gcdInt(a: Int, b: Int): Int {
     return x
 }
 
-/** Timbre du clic (synthétisé, voir ClickSynth). */
-enum class ClickSound { CLICK, WOOD, BEEP, CLAVE, COWBELL }
+/**
+ * Timbre du clic (synthétisé, voir ClickSynth). [CLICK] est le son normal. Les sons [experimental]
+ * sont des formes d'onde **propres et déterministes** (sans bruit), crête réduite : conçues pour le
+ * mode de filtrage adaptatif (annulation du clic au micro) — à utiliser à un volume qui n'écrête pas.
+ */
+enum class ClickSound(val experimental: Boolean = false) {
+    CLICK,
+    SINE(experimental = true),
+    CHIRP(experimental = true),
+}
 
 /**
  * Animation de retour du suivi de tempo au micro :

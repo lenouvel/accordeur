@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -217,12 +218,27 @@ fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions, modifier
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     for (sound in ClickSound.entries) {
+                        val exp = sound.experimental
                         FilterChip(
                             selected = sound == config.sound,
                             onClick = { actions.onSoundChange(sound) },
-                            label = { Text(stringResource(soundLabel(sound)), maxLines = 1, softWrap = false) },
+                            label = {
+                                val label = stringResource(soundLabel(sound))
+                                Text(if (exp) "⚗ $label" else label, maxLines = 1, softWrap = false)
+                            },
+                            colors = if (exp) {
+                                FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                )
+                            } else {
+                                FilterChipDefaults.filterChipColors()
+                            },
                         )
                     }
+                }
+                if (config.sound.experimental) {
+                    SectionDesc(stringResource(R.string.metro_sound_experimental))
                 }
             }
 
@@ -440,10 +456,8 @@ private fun SymbolButton(symbol: String, description: String, enabled: Boolean =
 
 private fun soundLabel(sound: ClickSound): Int = when (sound) {
     ClickSound.CLICK -> R.string.sound_click
-    ClickSound.WOOD -> R.string.sound_wood
-    ClickSound.BEEP -> R.string.sound_beep
-    ClickSound.CLAVE -> R.string.sound_clave
-    ClickSound.COWBELL -> R.string.sound_cowbell
+    ClickSound.SINE -> R.string.sound_sine
+    ClickSound.CHIRP -> R.string.sound_chirp
 }
 
 private fun tempoVisualLabel(visual: TempoVisual): Int = when (visual) {

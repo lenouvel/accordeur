@@ -190,10 +190,9 @@
     <string name="metro_accent">Accent sur le 1er temps</string>
     <string name="metro_sound">Son</string>
     <string name="sound_click">Clic</string>
-    <string name="sound_wood">Bois</string>
-    <string name="sound_beep">Bip</string>
-    <string name="sound_clave">Claves</string>
-    <string name="sound_cowbell">Cloche</string>
+    <string name="sound_sine">Sinus</string>
+    <string name="sound_chirp">Chirp</string>
+    <string name="metro_sound_experimental">Son expérimental, propre et déterministe : destiné au filtrage adaptatif (annulation du clic au micro). À utiliser à volume modéré pour éviter l\'écrêtage.</string>
     <string name="metro_measure">Mesure %1$d</string>
     <string name="metro_count_in_running">Décompte %1$d</string>
     <string name="metro_count_in">Décompte (mesures)</string>
