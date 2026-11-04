@@ -27,7 +27,7 @@ object ClickSynth {
     private fun durationMs(sound: ClickSound): Int = when (sound) {
         ClickSound.CLICK -> 30
         ClickSound.SINE -> 45
-        ClickSound.CHIRP -> 26
+        ClickSound.CHIRP -> 60 // long : étalé dans le temps → audible à crête plus basse
     }
 
     /** Fréquence (Hz) de la variante pour les sons toniques (CLICK, SINE). */
@@ -49,11 +49,11 @@ object ClickSynth {
         }
     }
 
-    /** Bornes du balayage (Hz) du chirp selon la variante. */
+    /** Bornes du balayage (Hz) du chirp selon la variante, centrées sur 1,5‑4,5 kHz (oreille sensible). */
     private fun chirpRange(tick: Tick): Pair<Double, Double> = when (tick) {
-        Tick.ACCENT -> 1500.0 to 4000.0
-        Tick.BEAT -> 1200.0 to 3000.0
-        Tick.SUB -> 1000.0 to 2200.0
+        Tick.ACCENT -> 1800.0 to 4500.0
+        Tick.BEAT -> 1500.0 to 3800.0
+        Tick.SUB -> 1200.0 to 2800.0
     }
 
     private fun gain(tick: Tick): Double = when (tick) {
