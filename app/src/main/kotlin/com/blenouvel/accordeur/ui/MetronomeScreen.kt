@@ -66,6 +66,7 @@ class MetronomeActions(
     val onListenHeadphonesChange: (Boolean) -> Unit,
     val onListenLatencyChange: (Int) -> Unit,
     val onTempoVisualChange: (TempoVisual) -> Unit,
+    val onToggleRecording: () -> Unit,
     val onOpenSettings: () -> Unit,
 )
 
@@ -237,6 +238,9 @@ fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions, modifier
                     LabeledRow(stringResource(R.string.metro_listen_headphones)) {
                         Switch(checked = state.listenHeadphones, onCheckedChange = actions.onListenHeadphonesChange)
                     }
+                    if (!state.listenHeadphones) {
+                        SectionDesc(stringResource(R.string.metro_listen_speaker_warn))
+                    }
                     FieldLabel(stringResource(R.string.tempo_visual))
                     Row(
                         modifier = Modifier
@@ -262,6 +266,29 @@ fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions, modifier
                         )
                     }
                     SectionDesc(stringResource(R.string.metro_listen_latency_desc))
+
+                    // Enregistrement d'une prise pour la banque de test.
+                    OutlinedButton(
+                        onClick = actions.onToggleRecording,
+                        enabled = state.running,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (state.recording) {
+                                stringResource(R.string.metro_rec_stop, state.recordingSeconds)
+                            } else {
+                                stringResource(R.string.metro_rec_start)
+                            },
+                            color = if (state.recording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    SectionDesc(
+                        if (state.bankTakes > 0) {
+                            stringResource(R.string.metro_rec_bank, state.bankTakes, state.bankBytes / (1024 * 1024))
+                        } else {
+                            stringResource(R.string.metro_rec_hint)
+                        },
+                    )
                 }
             }
 

@@ -7,12 +7,14 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Build
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import java.io.File
 import kotlin.math.max
 
 /**
@@ -30,6 +32,11 @@ class TempoListener(context: Context) {
     private val _onsets = MutableSharedFlow<Long>(extraBufferCapacity = 64)
     /** Instants (ns, [SystemClock.elapsedRealtimeNanos]) des attaques détectées. */
     val onsets: SharedFlow<Long> = _onsets
+
+    /** Banque de test : enregistre le son brut pendant l'écoute quand une prise est lancée. */
+    val recorder = TempoRecorder(File(appContext.filesDir, TempoRecorder.DIRECTORY)).apply {
+        deviceInfo = "${Build.MANUFACTURER} ${Build.MODEL} | Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+    }
 
     @Volatile
     private var running = false
@@ -59,10 +66,11 @@ class TempoListener(context: Context) {
 
     private fun loop() {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-        val record = openRecord() ?: run {
+        val opened = openRecord() ?: run {
             running = false
             return
         }
+        val record = opened.record
         val sampleRate = record.sampleRate
         val floatInput = record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT
         val detector = OnsetDetector(sampleRate)
@@ -74,6 +82,7 @@ class TempoListener(context: Context) {
             // Ancre : l'échantillon 0 correspond à cet instant (la latence d'entrée est une constante,
             // absorbée par l'offset de calibration, comme la latence de sortie du métronome).
             val startNanos = SystemClock.elapsedRealtimeNanos()
+            recorder.start(sampleRate, floatInput, opened.sourceName, startNanos)
             while (running) {
                 val count = if (shorts == null) {
                     record.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
@@ -89,10 +98,12 @@ class TempoListener(context: Context) {
                 detector.process(samples, count) { timeSec ->
                     _onsets.tryEmit(startNanos + (timeSec * 1_000_000_000.0).toLong())
                 }
+                recorder.offer(samples, count)
             }
         } catch (e: RuntimeException) {
             Log.e(TAG, "Écoute tempo interrompue", e)
         } finally {
+            recorder.stop()
             try {
                 record.stop()
             } catch (_: IllegalStateException) {
@@ -101,9 +112,11 @@ class TempoListener(context: Context) {
         }
     }
 
+    private class Opened(val record: AudioRecord, val sourceName: String)
+
     /** Ouvre le micro en préférant les sources qui préservent le transitoire (pas d'AGC/réduction). */
     @SuppressLint("MissingPermission") // permission vérifiée dans start()
-    private fun openRecord(): AudioRecord? {
+    private fun openRecord(): Opened? {
         for (source in SOURCES) {
             for (rate in SAMPLE_RATES) {
                 for (encoding in ENCODINGS) {
@@ -126,12 +139,20 @@ class TempoListener(context: Context) {
                         Log.i(TAG, "Config refusée : source=$source $rate Hz enc=$encoding", e)
                         null
                     }
-                    if (record != null && record.state == AudioRecord.STATE_INITIALIZED) return record
+                    if (record != null && record.state == AudioRecord.STATE_INITIALIZED) {
+                        return Opened(record, sourceName(source))
+                    }
                     record?.release()
                 }
             }
         }
         return null
+    }
+
+    private fun sourceName(source: Int): String = when (source) {
+        MediaRecorder.AudioSource.VOICE_RECOGNITION -> "VOICE_RECOGNITION"
+        MediaRecorder.AudioSource.MIC -> "MIC"
+        else -> source.toString()
     }
 
     private companion object {

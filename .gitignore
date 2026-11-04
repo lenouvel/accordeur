@@ -16,8 +16,10 @@ local.properties
 *.keystore
 *.jks
 
-# Script de déploiement perso (IP Tailscale + chemin ADB locaux, non partageables).
+# Scripts perso (IP Tailscale + chemin ADB locaux) et captures tirées du téléphone.
 scripts/deploy-phone.sh
+scripts/pull-tempo-bank.sh
+tempo-captures/
 
 # Système
 .DS_Store

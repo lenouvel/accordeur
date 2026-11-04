@@ -260,6 +260,7 @@ private fun AccordeurApp(
                             onListenHeadphonesChange = metronomeViewModel::setListenHeadphones,
                             onListenLatencyChange = metronomeViewModel::setListenLatency,
                             onTempoVisualChange = metronomeViewModel::setTempoVisual,
+                            onToggleRecording = metronomeViewModel::toggleRecording,
                             onOpenSettings = openSettings,
                         ),
                     )

@@ -113,7 +113,13 @@ class OnsetDetector(
 
         /** Montée minimale d'un bloc à l'autre pour parler d'attaque (sinon : note tenue). */
         const val RISE_DB = 3.0
-        const val REFRACTORY_SEC = 0.06
+
+        /**
+         * 80 ms : coalesce les double-déclenchements (médiator, et surtout le 2ᵉ transitoire d'un
+         * clic de métronome fort entendu au micro, mesuré ~60 ms après le premier). Limite le débit
+         * à ~12 attaques/s (OK jusqu'aux doubles-croches à ~150 BPM).
+         */
+        const val REFRACTORY_SEC = 0.08
         const val FLOOR_DB = -55.0
 
         /** ~0,25 s d'historique pour la médiane (48 × 5,3 ms). */
