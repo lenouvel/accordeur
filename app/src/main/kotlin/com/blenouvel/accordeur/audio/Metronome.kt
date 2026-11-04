@@ -60,6 +60,10 @@ class Metronome {
     @Volatile
     private var config = MetronomeConfig()
 
+    /** Gain appliqué au clic (0..1), piloté par le mode volume dynamique ; 1 = plein niveau. */
+    @Volatile
+    var clickGain: Float = 1f
+
     @Volatile
     private var alive = false
 
@@ -127,6 +131,7 @@ class Metronome {
         }
 
         val silence = ShortArray(CHUNK)
+        val scaled = ShortArray(CHUNK) // clic mis à l'échelle (volume dynamique)
         // Clics en cache pour le son courant.
         var cachedSound: ClickSound? = null
         var accentBuf = ShortArray(0)
@@ -206,8 +211,15 @@ class Metronome {
                 samplePos += remaining
 
                 if (audible && variant.isNotEmpty() && remaining > 0) {
-                    val clickLen = minOf(variant.size, remaining)
-                    if (!writeFully(track, variant, clickLen)) break
+                    val clickLen = minOf(variant.size, remaining, scaled.size)
+                    val g = clickGain
+                    val buf = if (g >= 0.999f) {
+                        variant
+                    } else {
+                        for (i in 0 until clickLen) scaled[i] = (variant[i] * g).toInt().toShort()
+                        scaled
+                    }
+                    if (!writeFully(track, buf, clickLen)) break
                     remaining -= clickLen
                 }
                 while (remaining > 0 && alive) {

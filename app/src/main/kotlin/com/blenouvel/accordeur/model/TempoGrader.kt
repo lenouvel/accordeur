@@ -115,6 +115,11 @@ class TempoGrader(
         deviations.clear()
     }
 
+    /** Oublie les écarts récents mais garde le repère de temps (reprise d'une phase de détection). */
+    fun clearHistory() {
+        deviations.clear()
+    }
+
     companion object {
         /** En deçà de cet écart moyen, le jeu est « dans le tempo ». */
         const val DEFAULT_TOLERANCE_MS = 45.0

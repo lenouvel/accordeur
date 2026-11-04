@@ -262,6 +262,7 @@ private fun AccordeurApp(
                             onListenLatencyChange = metronomeViewModel::setListenLatency,
                             onTempoVisualChange = metronomeViewModel::setTempoVisual,
                             onToggleRecording = metronomeViewModel::toggleRecording,
+                            onDynamicsChange = metronomeViewModel::setDynamics,
                             onOpenSettings = openSettings,
                         ),
                     )

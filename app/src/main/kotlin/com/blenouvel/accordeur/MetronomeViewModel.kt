@@ -10,12 +10,14 @@ import com.blenouvel.accordeur.audio.TempoTakeMeta
 import com.blenouvel.accordeur.data.Settings
 import com.blenouvel.accordeur.data.SettingsStore
 import com.blenouvel.accordeur.model.ClickSound
+import com.blenouvel.accordeur.model.DynamicVolume
 import com.blenouvel.accordeur.model.MetronomeConfig
 import com.blenouvel.accordeur.model.SilentMeasures
 import com.blenouvel.accordeur.model.Subdivision
 import com.blenouvel.accordeur.model.TapTempo
 import com.blenouvel.accordeur.model.TempoAutomation
 import com.blenouvel.accordeur.model.TempoGrader
+import com.blenouvel.accordeur.model.TempoPhase
 import com.blenouvel.accordeur.model.TempoVisual
 import com.blenouvel.accordeur.model.TimingReading
 import com.blenouvel.accordeur.model.gradingDivision
@@ -53,6 +55,8 @@ data class MetronomeUiState(
     /** Bilan de la banque tempo. */
     val bankTakes: Int = 0,
     val bankBytes: Long = 0L,
+    /** Phase du volume dynamique (null si désactivé). */
+    val tempoPhase: TempoPhase? = null,
 ) {
     /** BPM affiché : celui du clic courant (automation) à l'arrêt on retombe sur le réglage. */
     val displayBpm: Int get() = if (running) tick?.bpm ?: config.bpm else config.bpm
@@ -80,12 +84,19 @@ class MetronomeViewModel(
     private var autoLatencyMs = Double.NaN
     private var takeStartedNanos = 0L
 
-    /** État annexe du suivi (enregistrement + banque), hors flux de réglages. */
+    // Volume dynamique : machine à états (prépa → descente → détection → resynchro).
+    private var phase: TempoPhase? = null
+    private var barsInPhase = 0
+    private var lastMeasure = Int.MIN_VALUE
+    private var targetGain = DEFAULT_TARGET_GAIN
+
+    /** État annexe du suivi (enregistrement + banque + phase), hors flux de réglages. */
     private data class TempoAux(
         val recording: Boolean = false,
         val recordingSeconds: Int = 0,
         val bankTakes: Int = 0,
         val bankBytes: Long = 0L,
+        val tempoPhase: TempoPhase? = null,
     )
 
     val uiState: StateFlow<MetronomeUiState> =
@@ -106,6 +117,7 @@ class MetronomeViewModel(
                 recordingSeconds = aux.recordingSeconds,
                 bankTakes = aux.bankTakes,
                 bankBytes = aux.bankBytes,
+                tempoPhase = if (running && settings.metroDynEnabled) aux.tempoPhase else null,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), MetronomeUiState())
 
@@ -157,10 +169,79 @@ class MetronomeViewModel(
             val seconds = ((SystemClock.elapsedRealtimeNanos() - takeStartedNanos) / 1_000_000_000L).toInt()
             _aux.value = _aux.value.copy(recording = true, recordingSeconds = seconds)
         }
+        updateDynamics(tick)
+    }
+
+    /** Vrai quand on analyse réellement le jeu (hors volume dynamique, ou phase de détection). */
+    private fun analyzing(): Boolean = !currentSettings.metroDynEnabled || phase == TempoPhase.DETECT
+
+    /** Volume dynamique : fait avancer la phase aux mesures, calcule le gain du clic, pilote le moteur. */
+    private fun updateDynamics(tick: MetronomeTick) {
+        val dyn = currentSettings.metronome.dynamics
+        if (!dyn.enabled) {
+            if (phase != null) {
+                phase = null
+                _aux.value = _aux.value.copy(tempoPhase = null)
+            }
+            if (engine.clickGain != 1f) engine.clickGain = 1f
+            return
+        }
+        if (phase == null) {
+            phase = TempoPhase.PREP
+            barsInPhase = 0
+            lastMeasure = tick.measure
+        }
+        // Avance d'une mesure (hors décompte) à chaque nouvelle mesure.
+        if (tick.measure != lastMeasure) {
+            lastMeasure = tick.measure
+            if (!tick.countIn) {
+                barsInPhase++
+                advancePhase(dyn)
+            }
+        }
+        // Cible « audible max » : on vise la crête d'entrée juste sous l'écrêtage, en détection.
+        if (phase == TempoPhase.DETECT) {
+            val lvl = listener.level.value
+            if (lvl > 0.97f) targetGain = (targetGain * 0.94f).coerceAtLeast(MIN_TARGET_GAIN)
+            else if (lvl < 0.80f) targetGain = (targetGain * 1.03f).coerceAtMost(1f)
+        }
+        val beats = tick.beatsPerMeasure.coerceAtLeast(1)
+        val frac = (tick.beatIndex + 1).toFloat() / beats
+        engine.clickGain = when (phase) {
+            TempoPhase.PREP, TempoPhase.RESYNC -> 1f
+            TempoPhase.DETECT -> targetGain
+            TempoPhase.DESCENT -> {
+                val p = ((barsInPhase + frac) / dyn.descentBars).coerceIn(0f, 1f)
+                val eased = p * p * (3f - 2f * p) // smoothstep
+                1f + (targetGain - 1f) * eased
+            }
+            null -> 1f
+        }
+        if (_aux.value.tempoPhase != phase) _aux.value = _aux.value.copy(tempoPhase = phase)
+    }
+
+    private fun advancePhase(dyn: DynamicVolume) {
+        when (phase) {
+            TempoPhase.PREP -> if (barsInPhase >= dyn.prepBars) enterPhase(TempoPhase.DESCENT)
+            TempoPhase.DESCENT -> if (barsInPhase >= dyn.descentBars) enterPhase(TempoPhase.DETECT)
+            TempoPhase.RESYNC -> if (barsInPhase >= dyn.resyncBars) enterPhase(TempoPhase.DESCENT)
+            TempoPhase.DETECT, null -> {}
+        }
+    }
+
+    private fun enterPhase(next: TempoPhase) {
+        phase = next
+        barsInPhase = 0
+        if (next == TempoPhase.DETECT) grader.clearHistory() // repart propre pour mesurer la dérive
     }
 
     private fun handleOnset(nanos: Long) {
         if (!currentSettings.metroListen) return
+        // Hors phase de détection (clic fort = micro saturé), on consigne l'attaque mais on ne note pas.
+        if (!analyzing()) {
+            listener.recorder.event('O', nanos)
+            return
+        }
         val timeMs = nanos / 1e6
         val manual = currentSettings.metroListenLatencyMs.toDouble()
         // Écart à l'instant prévu du clic le plus proche (si des clics récents existent).
@@ -191,7 +272,15 @@ class MetronomeViewModel(
 
         val reading = grader.onOnset(timeMs, latency)
         listener.recorder.event('O', nanos, reading?.lastDeviationMs ?: Double.NaN)
-        if (reading != null) _timing.value = reading
+        if (reading != null) {
+            _timing.value = reading
+            // Dérive franche en détection → on remonte le volume pour resynchroniser.
+            if (phase == TempoPhase.DETECT && reading.matched >= TempoGrader.DEFAULT_MIN_FOR_VERDICT &&
+                abs(reading.meanDeviationMs) > DRIFT_MS
+            ) {
+                enterPhase(TempoPhase.RESYNC)
+            }
+        }
     }
 
     private fun refreshBank() {
@@ -229,13 +318,24 @@ class MetronomeViewModel(
 
     fun start() {
         engine.updateConfig(uiState.value.config)
+        resetDynamics()
         engine.start()
         syncListener()
     }
 
     fun stop() {
         engine.stop()
+        resetDynamics()
         syncListener()
+    }
+
+    private fun resetDynamics() {
+        phase = null
+        barsInPhase = 0
+        lastMeasure = Int.MIN_VALUE
+        targetGain = DEFAULT_TARGET_GAIN
+        engine.clickGain = 1f
+        _aux.value = _aux.value.copy(tempoPhase = null)
     }
 
     // --- Tempo -------------------------------------------------------------------------------
@@ -276,6 +376,8 @@ class MetronomeViewModel(
     fun setListenLatency(ms: Int) = launchSetting { settingsStore.setMetroListenLatency(ms) }
 
     fun setTempoVisual(value: TempoVisual) = launchSetting { settingsStore.setMetroTempoVisual(value) }
+
+    fun setDynamics(value: DynamicVolume) = launchSetting { settingsStore.setMetroDynamics(value) }
 
     /** Bouton ● / ■ : enregistre une prise (banque de test) pendant que l'écoute tourne. */
     fun toggleRecording() {
@@ -329,5 +431,12 @@ class MetronomeViewModel(
         /** Fenêtre anti-clic autour de (clic + latence) : avant / après (ms). */
         const val CLICK_GUARD_BEFORE_MS = 45.0
         const val CLICK_GUARD_AFTER_MS = 55.0
+
+        /** Gain de clic de départ en détection (puis ajusté vers « juste sous l'écrêtage »). */
+        const val DEFAULT_TARGET_GAIN = 0.5f
+        const val MIN_TARGET_GAIN = 0.08f
+
+        /** Écart moyen (ms) au-delà duquel on considère que le joueur a décroché → resynchro. */
+        const val DRIFT_MS = 90.0
     }
 }

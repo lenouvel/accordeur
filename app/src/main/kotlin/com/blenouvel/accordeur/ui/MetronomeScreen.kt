@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.blenouvel.accordeur.MetronomeUiState
 import com.blenouvel.accordeur.R
 import com.blenouvel.accordeur.model.ClickSound
+import com.blenouvel.accordeur.model.DynamicVolume
 import com.blenouvel.accordeur.model.MetronomeRange
 import com.blenouvel.accordeur.model.SilentMeasures
 import com.blenouvel.accordeur.model.Subdivision
@@ -69,6 +70,7 @@ class MetronomeActions(
     val onListenLatencyChange: (Int) -> Unit,
     val onTempoVisualChange: (TempoVisual) -> Unit,
     val onToggleRecording: () -> Unit,
+    val onDynamicsChange: (DynamicVolume) -> Unit,
     val onOpenSettings: () -> Unit,
 )
 
@@ -122,6 +124,7 @@ fun MetronomeScreen(
                 active = state.running && state.listen,
                 tick = state.tick,
                 running = state.running,
+                phase = state.tempoPhase,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(150.dp),
@@ -313,6 +316,30 @@ fun MetronomeScreen(
                             stringResource(R.string.metro_rec_hint)
                         },
                     )
+
+                    // Volume dynamique.
+                    val dyn = config.dynamics
+                    LabeledRow(stringResource(R.string.metro_dyn_title)) {
+                        Switch(checked = dyn.enabled, onCheckedChange = { actions.onDynamicsChange(dyn.copy(enabled = it)) })
+                    }
+                    SectionDesc(stringResource(R.string.metro_dyn_desc))
+                    if (dyn.enabled) {
+                        LabeledRow(stringResource(R.string.metro_dyn_prep)) {
+                            Stepper(dyn.prepBars, 1, MetronomeRange.MAX_DYNAMIC_BARS) {
+                                actions.onDynamicsChange(dyn.copy(prepBars = it))
+                            }
+                        }
+                        LabeledRow(stringResource(R.string.metro_dyn_descent)) {
+                            Stepper(dyn.descentBars, 1, MetronomeRange.MAX_DYNAMIC_BARS) {
+                                actions.onDynamicsChange(dyn.copy(descentBars = it))
+                            }
+                        }
+                        LabeledRow(stringResource(R.string.metro_dyn_resync)) {
+                            Stepper(dyn.resyncBars, 1, MetronomeRange.MAX_DYNAMIC_BARS) {
+                                actions.onDynamicsChange(dyn.copy(resyncBars = it))
+                            }
+                        }
+                    }
                 }
             }
 

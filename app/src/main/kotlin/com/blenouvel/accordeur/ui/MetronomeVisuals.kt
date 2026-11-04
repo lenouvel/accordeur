@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.blenouvel.accordeur.R
 import com.blenouvel.accordeur.audio.MetronomeTick
 import com.blenouvel.accordeur.model.TempoGrader
+import com.blenouvel.accordeur.model.TempoPhase
 import com.blenouvel.accordeur.model.TempoVisual
 import com.blenouvel.accordeur.model.TimingReading
 import com.blenouvel.accordeur.model.TimingVerdict
@@ -125,8 +126,11 @@ fun TempoFeedback(
     active: Boolean,
     tick: MetronomeTick?,
     running: Boolean,
+    phase: TempoPhase?,
     modifier: Modifier = Modifier,
 ) {
+    // En détection (ou hors volume dynamique), on montre le verdict ; sinon la couleur est neutre.
+    val detecting = phase == null || phase == TempoPhase.DETECT
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -134,12 +138,12 @@ fun TempoFeedback(
     ) {
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             when (visual) {
-                TempoVisual.METER -> TempoMeter(reading, active, Modifier.fillMaxSize())
-                TempoVisual.HALO -> TempoHalo(reading, active, tick, running, Modifier.fillMaxSize())
-                TempoVisual.RING -> TempoRing(reading, active, tick, running, Modifier.fillMaxSize())
+                TempoVisual.METER -> TempoMeter(reading, active && detecting, Modifier.fillMaxSize())
+                TempoVisual.HALO -> TempoHalo(reading, active && detecting, tick, running, Modifier.fillMaxSize())
+                TempoVisual.RING -> TempoRing(reading, active && detecting, tick, running, Modifier.fillMaxSize())
             }
         }
-        TempoCaption(reading, active)
+        TempoCaption(reading, active, phase)
     }
 }
 
@@ -184,26 +188,38 @@ fun VuMeter(level: StateFlow<Float>, modifier: Modifier = Modifier) {
     }
 }
 
-/** Verdict (grand) + régularité (petit). */
+/** Badge de phase (volume dynamique) + verdict (grand) + régularité (petit). */
 @Composable
-private fun TempoCaption(reading: TimingReading?, active: Boolean) {
+private fun TempoCaption(reading: TimingReading?, active: Boolean, phase: TempoPhase?) {
     val colors = TunerTheme.colors
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val (text, color) = when {
-        !active -> "" to muted
-        reading == null || reading.verdict == TimingVerdict.NONE -> stringResource(R.string.tempo_waiting) to muted
-        reading.verdict == TimingVerdict.ON_TIME -> stringResource(R.string.tempo_on_time) to colors.inTune
-        reading.verdict == TimingVerdict.RUSHING -> stringResource(R.string.tempo_rushing) to colors.warning
-        else -> stringResource(R.string.tempo_dragging) to colors.warning
-    }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text, style = MaterialTheme.typography.titleMedium, color = color, textAlign = TextAlign.Center)
-        if (active && reading != null && !reading.spreadMs.isNaN()) {
-            Text(
-                text = stringResource(R.string.tempo_spread, reading.spreadMs.roundToInt()),
-                style = MaterialTheme.typography.bodySmall,
-                color = muted,
-            )
+    val scheme = MaterialTheme.colorScheme
+    val muted = scheme.onSurfaceVariant
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (phase != null) {
+            val (label, color) = when (phase) {
+                TempoPhase.PREP -> stringResource(R.string.tempo_phase_prep) to scheme.primary
+                TempoPhase.DESCENT -> stringResource(R.string.tempo_phase_descent) to scheme.primary
+                TempoPhase.DETECT -> stringResource(R.string.tempo_phase_detect) to colors.inTune
+                TempoPhase.RESYNC -> stringResource(R.string.tempo_phase_resync) to scheme.primary
+            }
+            Text(label, style = MaterialTheme.typography.labelMedium, color = color, textAlign = TextAlign.Center)
+        }
+        if (phase == null || phase == TempoPhase.DETECT) {
+            val (text, color) = when {
+                !active -> "" to muted
+                reading == null || reading.verdict == TimingVerdict.NONE -> stringResource(R.string.tempo_waiting) to muted
+                reading.verdict == TimingVerdict.ON_TIME -> stringResource(R.string.tempo_on_time) to colors.inTune
+                reading.verdict == TimingVerdict.RUSHING -> stringResource(R.string.tempo_rushing) to colors.warning
+                else -> stringResource(R.string.tempo_dragging) to colors.warning
+            }
+            Text(text, style = MaterialTheme.typography.titleMedium, color = color, textAlign = TextAlign.Center)
+            if (active && reading != null && !reading.spreadMs.isNaN()) {
+                Text(
+                    text = stringResource(R.string.tempo_spread, reading.spreadMs.roundToInt()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = muted,
+                )
+            }
         }
     }
 }

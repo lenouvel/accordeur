@@ -238,4 +238,13 @@
     <string name="metro_rec_hint">Lance le métronome, puis enregistre-toi en jouant : le son brut et les repères (temps, clics, attaques) sont gardés pour régler la détection.</string>
     <string name="metro_input_level">Niveau d\'entrée (micro)</string>
     <string name="metro_input_clip">⚠ écrêtage</string>
+    <string name="metro_dyn_title">Volume dynamique</string>
+    <string name="metro_dyn_desc">Clic fort pour te caler, puis descente douce jusqu\'au plus fort niveau non saturé pour analyser ton jeu ; si tu décroches, le volume remonte pour resynchroniser.</string>
+    <string name="metro_dyn_prep">Préparation (mesures)</string>
+    <string name="metro_dyn_descent">Descente (mesures)</string>
+    <string name="metro_dyn_resync">Resynchro (mesures)</string>
+    <string name="tempo_phase_prep">Préparation — écoute et cale-toi</string>
+    <string name="tempo_phase_descent">Descente du volume…</string>
+    <string name="tempo_phase_detect">● Détection</string>
+    <string name="tempo_phase_resync">Resynchro — remets-toi en place</string>
 </resources>

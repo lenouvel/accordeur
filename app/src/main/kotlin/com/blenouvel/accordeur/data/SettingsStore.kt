@@ -16,6 +16,7 @@ import com.blenouvel.accordeur.audio.isAvailable
 import com.blenouvel.accordeur.audio.TunerMode
 import com.blenouvel.accordeur.model.ClickSound
 import com.blenouvel.accordeur.model.CustomTuningCodec
+import com.blenouvel.accordeur.model.DynamicVolume
 import com.blenouvel.accordeur.model.FretLabels
 import com.blenouvel.accordeur.model.FretboardMap
 import com.blenouvel.accordeur.model.MetronomeConfig
@@ -96,6 +97,11 @@ data class Settings(
     val metroListenLatencyMs: Int = 0,
     /** Animation de retour du suivi de tempo. */
     val metroTempoVisual: TempoVisual = TempoVisual.METER,
+    /** Volume dynamique (fort pour se caler, descente, détection, resynchro). */
+    val metroDynEnabled: Boolean = false,
+    val metroDynPrep: Int = 2,
+    val metroDynDescent: Int = 4,
+    val metroDynResync: Int = 2,
 ) {
     /** Accordage courant (repli sur Standard 6 cordes si l'identifiant n'existe plus). */
     val tuning: Tuning
@@ -119,6 +125,12 @@ data class Settings(
                 stepBars = metroAutoStepBars,
                 loop = metroAutoLoop,
                 law = metroAutoLaw,
+            ),
+            dynamics = DynamicVolume(
+                enabled = metroDynEnabled,
+                prepBars = metroDynPrep,
+                descentBars = metroDynDescent,
+                resyncBars = metroDynResync,
             ),
         ).sanitized()
 
@@ -232,6 +244,13 @@ class SettingsStore(context: Context) {
 
     suspend fun setMetroTempoVisual(value: TempoVisual) = edit { it[METRO_TEMPO_VISUAL] = value.name }
 
+    suspend fun setMetroDynamics(value: DynamicVolume) = edit {
+        it[METRO_DYN_ENABLED] = value.enabled
+        it[METRO_DYN_PREP] = value.prepBars.coerceIn(1, MetronomeRange.MAX_DYNAMIC_BARS)
+        it[METRO_DYN_DESCENT] = value.descentBars.coerceIn(1, MetronomeRange.MAX_DYNAMIC_BARS)
+        it[METRO_DYN_RESYNC] = value.resyncBars.coerceIn(1, MetronomeRange.MAX_DYNAMIC_BARS)
+    }
+
 
     /** Ajoute ou remplace (même identifiant) un accordage personnalisé, puis le sélectionne. */
     suspend fun saveCustomTuning(tuning: Tuning) = edit { prefs ->
@@ -303,6 +322,10 @@ class SettingsStore(context: Context) {
             metroListenHeadphones = this[METRO_LISTEN_HEADPHONES] ?: defaults.metroListenHeadphones,
             metroListenLatencyMs = this[METRO_LISTEN_LATENCY] ?: defaults.metroListenLatencyMs,
             metroTempoVisual = enumOf(this[METRO_TEMPO_VISUAL], defaults.metroTempoVisual),
+            metroDynEnabled = this[METRO_DYN_ENABLED] ?: defaults.metroDynEnabled,
+            metroDynPrep = this[METRO_DYN_PREP] ?: defaults.metroDynPrep,
+            metroDynDescent = this[METRO_DYN_DESCENT] ?: defaults.metroDynDescent,
+            metroDynResync = this[METRO_DYN_RESYNC] ?: defaults.metroDynResync,
         )
     }
 
@@ -354,5 +377,9 @@ class SettingsStore(context: Context) {
         val METRO_LISTEN_HEADPHONES = booleanPreferencesKey("metro_listen_headphones")
         val METRO_LISTEN_LATENCY = intPreferencesKey("metro_listen_latency")
         val METRO_TEMPO_VISUAL = stringPreferencesKey("metro_tempo_visual")
+        val METRO_DYN_ENABLED = booleanPreferencesKey("metro_dyn_enabled")
+        val METRO_DYN_PREP = intPreferencesKey("metro_dyn_prep")
+        val METRO_DYN_DESCENT = intPreferencesKey("metro_dyn_descent")
+        val METRO_DYN_RESYNC = intPreferencesKey("metro_dyn_resync")
     }
 }

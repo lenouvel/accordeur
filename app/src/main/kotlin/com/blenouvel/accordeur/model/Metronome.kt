@@ -158,6 +158,22 @@ data class SilentMeasures(
     val muteBars: Int = 1,
 )
 
+/**
+ * Volume dynamique pour le suivi au micro : clic **fort** (quitte à saturer) pendant [prepBars]
+ * mesures pour bien entendre et se caler, **descente** douce sur [descentBars] mesures jusqu'au
+ * niveau le plus fort qui ne sature pas l'entrée, puis **détection** du jeu. Si on dérive, on remonte
+ * le volume et on refait [resyncBars] mesures de resynchro avant de redescendre.
+ */
+data class DynamicVolume(
+    val enabled: Boolean = false,
+    val prepBars: Int = 2,
+    val descentBars: Int = 4,
+    val resyncBars: Int = 2,
+)
+
+/** Phase du volume dynamique (pour l'affichage et pour savoir quand analyser). */
+enum class TempoPhase { PREP, DESCENT, DETECT, RESYNC }
+
 /** Configuration complète du métronome (ce que le moteur doit connaître). */
 data class MetronomeConfig(
     val bpm: Int = MetronomeRange.DEFAULT_BPM,
@@ -169,6 +185,7 @@ data class MetronomeConfig(
     val countInBars: Int = 0,
     val silent: SilentMeasures = SilentMeasures(),
     val automation: TempoAutomation = TempoAutomation(),
+    val dynamics: DynamicVolume = DynamicVolume(),
 ) {
     fun sanitized(): MetronomeConfig = copy(
         bpm = bpm.coerceIn(MetronomeRange.MIN_BPM, MetronomeRange.MAX_BPM),
@@ -177,6 +194,11 @@ data class MetronomeConfig(
         silent = silent.copy(
             playBars = silent.playBars.coerceIn(1, MetronomeRange.MAX_SILENT_BARS),
             muteBars = silent.muteBars.coerceIn(1, MetronomeRange.MAX_SILENT_BARS),
+        ),
+        dynamics = dynamics.copy(
+            prepBars = dynamics.prepBars.coerceIn(1, MetronomeRange.MAX_DYNAMIC_BARS),
+            descentBars = dynamics.descentBars.coerceIn(1, MetronomeRange.MAX_DYNAMIC_BARS),
+            resyncBars = dynamics.resyncBars.coerceIn(1, MetronomeRange.MAX_DYNAMIC_BARS),
         ),
         automation = automation.copy(
             startBpm = automation.startBpm.coerceIn(MetronomeRange.MIN_BPM, MetronomeRange.MAX_BPM),
@@ -196,6 +218,7 @@ object MetronomeRange {
     const val MAX_BEATS = 16
     const val MAX_COUNT_IN = 8
     const val MAX_SILENT_BARS = 16
+    const val MAX_DYNAMIC_BARS = 16
 
     /** Offset de latence du suivi au micro (ms) : plage de recalage du zéro. */
     const val MIN_LATENCY_MS = -300
