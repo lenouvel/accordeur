@@ -18,6 +18,7 @@ data class TempoTakeMeta(
     val toleranceMs: Double,
     val latencyMs: Int,
     val headphones: Boolean,
+    val sound: String,
 )
 
 /**
@@ -195,6 +196,7 @@ class TempoRecorder(
                 append("bpm=").append(m.bpm).append('\n')
                 append("temps_par_mesure=").append(m.beatsPerMeasure).append('\n')
                 append("subdivision=").append(m.subdivision).append('\n')
+                append("son=").append(m.sound).append('\n')
                 append("grille_par_temps=").append(m.division).append('\n')
                 append("tolerance_ms=").append(String.format(Locale.ROOT, "%.0f", m.toleranceMs)).append('\n')
                 append("latence_ms=").append(m.latencyMs).append('\n')

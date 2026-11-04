@@ -298,6 +298,7 @@ class MetronomeViewModel(
             toleranceMs = TempoGrader.DEFAULT_TOLERANCE_MS,
             latencyMs = currentSettings.metroListenLatencyMs,
             headphones = currentSettings.metroListenHeadphones,
+            sound = config.sound.name,
         )
     }
 
