@@ -16,6 +16,9 @@ local.properties
 *.keystore
 *.jks
 
+# Script de déploiement perso (IP Tailscale + chemin ADB locaux, non partageables).
+scripts/deploy-phone.sh
+
 # Système
 .DS_Store
 Thumbs.db

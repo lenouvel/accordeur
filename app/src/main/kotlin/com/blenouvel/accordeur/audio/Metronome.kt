@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import com.blenouvel.accordeur.model.ClickSound
 import com.blenouvel.accordeur.model.MetronomeConfig
@@ -31,6 +32,12 @@ data class MetronomeTick(
     val bpm: Int,
     /** Incrémenté à chaque clic : force l'animation même quand le reste est identique. */
     val serial: Long,
+    /**
+     * Instant prévu du clic (ns, [android.os.SystemClock.elapsedRealtimeNanos]), déduit du compteur
+     * d'échantillons : espacement parfaitement régulier, décalé du temps audible réel par une
+     * constante (latence de sortie). Sert au suivi du tempo au micro.
+     */
+    val timeNanos: Long = 0L,
 )
 
 /**
@@ -132,9 +139,11 @@ class Metronome {
         var barsForAuto = 0 // mesures écoulées comptant pour l'automation
         var frac = 0.0 // accumulateur fractionnaire d'échantillons (anti-dérive)
         var serial = 0L
+        var samplePos = 0L // échantillons cumulés depuis le départ (horodatage des clics)
 
         try {
             track.play()
+            val startNanos = SystemClock.elapsedRealtimeNanos()
             while (alive) {
                 val cfg = config
                 val sub = cfg.subdivision
@@ -188,11 +197,13 @@ class Metronome {
                     countInLeft = if (inCountIn) cfg.countInBars - measuresDone else 0,
                     bpm = bpm,
                     serial = serial,
+                    timeNanos = startNanos + samplePos * 1_000_000_000L / SAMPLE_RATE,
                 )
 
                 frac += MetronomeMath.samplesPerTick(bpm, grid, SAMPLE_RATE)
                 var remaining = frac.toInt()
                 frac -= remaining
+                samplePos += remaining
 
                 if (audible && variant.isNotEmpty() && remaining > 0) {
                     val clickLen = minOf(variant.size, remaining)

@@ -51,6 +51,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.blenouvel.accordeur.audio.AudioEngine
 import com.blenouvel.accordeur.audio.Metronome
 import com.blenouvel.accordeur.audio.ReferenceTone
+import com.blenouvel.accordeur.audio.TempoListener
 import com.blenouvel.accordeur.data.SettingsStore
 import com.blenouvel.accordeur.data.SoundBank
 import com.blenouvel.accordeur.data.ThemeMode
@@ -84,7 +85,11 @@ class MainActivity : ComponentActivity() {
                 ScalesViewModel(settingsStore = SettingsStore(applicationContext), tone = ReferenceTone())
             }
             val metronomeViewModel: MetronomeViewModel = viewModel {
-                MetronomeViewModel(settingsStore = SettingsStore(applicationContext), engine = Metronome())
+                MetronomeViewModel(
+                    settingsStore = SettingsStore(applicationContext),
+                    engine = Metronome(),
+                    listener = TempoListener(applicationContext),
+                )
             }
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val darkTheme = when (state.settings.theme) {
@@ -251,6 +256,10 @@ private fun AccordeurApp(
                             onCountInChange = metronomeViewModel::setCountInBars,
                             onSilentChange = metronomeViewModel::setSilent,
                             onAutomationChange = metronomeViewModel::setAutomation,
+                            onListenChange = metronomeViewModel::setListen,
+                            onListenHeadphonesChange = metronomeViewModel::setListenHeadphones,
+                            onListenLatencyChange = metronomeViewModel::setListenLatency,
+                            onTempoVisualChange = metronomeViewModel::setTempoVisual,
                             onOpenSettings = openSettings,
                         ),
                     )

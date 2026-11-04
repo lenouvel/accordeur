@@ -216,4 +216,20 @@
     <string name="law_triangle">Aller-retour</string>
     <string name="law_step">Par paliers</string>
     <string name="metro_enable">Activer</string>
+    <string name="metro_listen_title">Suivi du tempo (micro)</string>
+    <string name="metro_listen_desc">Écoute ton instrument et compare tes attaques au clic. Idéal au casque : le clic n\'entre alors pas dans le micro.</string>
+    <string name="metro_listen_headphones">Métronome au casque</string>
+    <string name="metro_listen_latency">Latence (ms)</string>
+    <string name="metro_listen_latency_desc">Ajuste si l\'app te trouve toujours en avance (valeur négative) ou en retard (positive).</string>
+    <string name="tempo_visual">Animation</string>
+    <string name="tempo_visual_meter">Jauge</string>
+    <string name="tempo_visual_halo">Halo</string>
+    <string name="tempo_visual_ring">Horloge</string>
+    <string name="tempo_waiting">En attente du jeu…</string>
+    <string name="tempo_on_time">Dans le tempo</string>
+    <string name="tempo_rushing">En avance</string>
+    <string name="tempo_dragging">En retard</string>
+    <string name="tempo_spread">Régularité ± %1$d ms</string>
+    <string name="tempo_early">En avance</string>
+    <string name="tempo_late">En retard</string>
 </resources>

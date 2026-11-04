@@ -27,6 +27,7 @@ import com.blenouvel.accordeur.model.ScaleCatalog
 import com.blenouvel.accordeur.model.SilentMeasures
 import com.blenouvel.accordeur.model.Subdivision
 import com.blenouvel.accordeur.model.TempoAutomation
+import com.blenouvel.accordeur.model.TempoVisual
 import com.blenouvel.accordeur.model.Tuning
 import com.blenouvel.accordeur.model.VariationLaw
 import kotlinx.coroutines.flow.Flow
@@ -87,6 +88,14 @@ data class Settings(
     val metroAutoStepBars: Int = 4,
     val metroAutoLoop: Boolean = false,
     val metroAutoLaw: VariationLaw = VariationLaw.LINEAR,
+    /** Suivi du tempo au micro : écoute le jeu et le compare au clic. */
+    val metroListen: Boolean = false,
+    /** Métronome au casque : le clic n'entre pas dans le micro (pas de filtrage des attaques). */
+    val metroListenHeadphones: Boolean = false,
+    /** Offset de latence (ms) recalant le zéro du suivi (avance/retard systématique). */
+    val metroListenLatencyMs: Int = 0,
+    /** Animation de retour du suivi de tempo. */
+    val metroTempoVisual: TempoVisual = TempoVisual.METER,
 ) {
     /** Accordage courant (repli sur Standard 6 cordes si l'identifiant n'existe plus). */
     val tuning: Tuning
@@ -214,6 +223,15 @@ class SettingsStore(context: Context) {
         it[METRO_AUTO_LAW] = value.law.name
     }
 
+    suspend fun setMetroListen(value: Boolean) = edit { it[METRO_LISTEN] = value }
+
+    suspend fun setMetroListenHeadphones(value: Boolean) = edit { it[METRO_LISTEN_HEADPHONES] = value }
+
+    suspend fun setMetroListenLatency(ms: Int) =
+        edit { it[METRO_LISTEN_LATENCY] = ms.coerceIn(MetronomeRange.MIN_LATENCY_MS, MetronomeRange.MAX_LATENCY_MS) }
+
+    suspend fun setMetroTempoVisual(value: TempoVisual) = edit { it[METRO_TEMPO_VISUAL] = value.name }
+
 
     /** Ajoute ou remplace (même identifiant) un accordage personnalisé, puis le sélectionne. */
     suspend fun saveCustomTuning(tuning: Tuning) = edit { prefs ->
@@ -281,6 +299,10 @@ class SettingsStore(context: Context) {
             metroAutoStepBars = this[METRO_AUTO_STEPBARS] ?: defaults.metroAutoStepBars,
             metroAutoLoop = this[METRO_AUTO_LOOP] ?: defaults.metroAutoLoop,
             metroAutoLaw = enumOf(this[METRO_AUTO_LAW], defaults.metroAutoLaw),
+            metroListen = this[METRO_LISTEN] ?: defaults.metroListen,
+            metroListenHeadphones = this[METRO_LISTEN_HEADPHONES] ?: defaults.metroListenHeadphones,
+            metroListenLatencyMs = this[METRO_LISTEN_LATENCY] ?: defaults.metroListenLatencyMs,
+            metroTempoVisual = enumOf(this[METRO_TEMPO_VISUAL], defaults.metroTempoVisual),
         )
     }
 
@@ -328,5 +350,9 @@ class SettingsStore(context: Context) {
         val METRO_AUTO_STEPBARS = intPreferencesKey("metro_auto_stepbars")
         val METRO_AUTO_LOOP = booleanPreferencesKey("metro_auto_loop")
         val METRO_AUTO_LAW = stringPreferencesKey("metro_auto_law")
+        val METRO_LISTEN = booleanPreferencesKey("metro_listen")
+        val METRO_LISTEN_HEADPHONES = booleanPreferencesKey("metro_listen_headphones")
+        val METRO_LISTEN_LATENCY = intPreferencesKey("metro_listen_latency")
+        val METRO_TEMPO_VISUAL = stringPreferencesKey("metro_tempo_visual")
     }
 }

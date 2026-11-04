@@ -68,8 +68,42 @@ enum class Subdivision(val tuplet: Int, val cells: List<RhythmCell>, val beamGro
         }
 }
 
+/**
+ * Nombre de subdivisions **égales** par temps servant à noter le jeu au micro : c'est la grille sur
+ * laquelle on rattache chaque attaque détectée. Pour un n-olet, c'est le chiffre du n-olet ; pour un
+ * schéma binaire, la plus petite division régulière qui contient toutes les positions sonnées
+ * (noire → 1, croches → 2, doubles-croches ou galops → 4). Utilisé par [TempoGrader].
+ */
+val Subdivision.gradingDivision: Int
+    get() = if (tuplet > 0) {
+        tuplet
+    } else {
+        var g = grid
+        for (p in onsets) g = gcdInt(g, p)
+        if (g <= 0) 1 else grid / g
+    }
+
+private fun gcdInt(a: Int, b: Int): Int {
+    var x = abs(a)
+    var y = abs(b)
+    while (y != 0) {
+        val t = y
+        y = x % y
+        x = t
+    }
+    return x
+}
+
 /** Timbre du clic (synthétisé, voir ClickSynth). */
 enum class ClickSound { CLICK, WOOD, BEEP, CLAVE, COWBELL }
+
+/**
+ * Animation de retour du suivi de tempo au micro :
+ * - [METER] : jauge horizontale, aiguille sur l'écart moyen (en avance ← 0 → en retard) ;
+ * - [HALO] : halo circulaire qui pulse à chaque temps, teinté selon la justesse rythmique ;
+ * - [RING] : horloge — une main balaie le cercle une fois par mesure, points des temps allumés.
+ */
+enum class TempoVisual { METER, HALO, RING }
 
 /** Loi de variation du tempo pendant l'automation (forme de la courbe tempo → temps). */
 enum class VariationLaw {
@@ -154,6 +188,11 @@ object MetronomeRange {
     const val MAX_BEATS = 16
     const val MAX_COUNT_IN = 8
     const val MAX_SILENT_BARS = 16
+
+    /** Offset de latence du suivi au micro (ms) : plage de recalage du zéro. */
+    const val MIN_LATENCY_MS = -300
+    const val MAX_LATENCY_MS = 300
+    const val LATENCY_STEP_MS = 10
 }
 
 /** Calculs temps réel du métronome, isolés pour être testés. */

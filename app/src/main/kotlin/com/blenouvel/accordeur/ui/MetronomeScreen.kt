@@ -45,6 +45,7 @@ import com.blenouvel.accordeur.model.MetronomeRange
 import com.blenouvel.accordeur.model.SilentMeasures
 import com.blenouvel.accordeur.model.Subdivision
 import com.blenouvel.accordeur.model.TempoAutomation
+import com.blenouvel.accordeur.model.TempoVisual
 import com.blenouvel.accordeur.ui.theme.NumericStyle
 import kotlin.math.roundToInt
 
@@ -61,13 +62,18 @@ class MetronomeActions(
     val onCountInChange: (Int) -> Unit,
     val onSilentChange: (SilentMeasures) -> Unit,
     val onAutomationChange: (TempoAutomation) -> Unit,
+    val onListenChange: (Boolean) -> Unit,
+    val onListenHeadphonesChange: (Boolean) -> Unit,
+    val onListenLatencyChange: (Int) -> Unit,
+    val onTempoVisualChange: (TempoVisual) -> Unit,
     val onOpenSettings: () -> Unit,
 )
 
 /**
  * Métronome : tempo (slider, +/−, tap), mesure et subdivisions, accent, son, puis les
- * modes d'entraînement (décompte, mesures silencieuses, automation du tempo, mémoires). Pendule et
- * points en tête. L'écran défile ; le métronome ne sonne que sur cette page.
+ * modes d'entraînement (suivi du tempo au micro, décompte, mesures silencieuses, automation du
+ * tempo). Animation de tempo et points en tête. L'écran défile ; le métronome ne sonne que sur
+ * cette page.
  */
 @Composable
 fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions, modifier: Modifier = Modifier) {
@@ -101,11 +107,13 @@ fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions, modifier
                 }
             }
 
-            // Visuel : pendule + rangée de points.
-            MetronomePendulum(
+            // Visuel : retour du suivi de tempo (ou animation de temps) + rangée de points.
+            TempoFeedback(
+                visual = state.tempoVisual,
+                reading = state.timing,
+                active = state.running && state.listen,
                 tick = state.tick,
                 running = state.running,
-                bpm = state.displayBpm,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(150.dp),
@@ -218,6 +226,44 @@ fun MetronomeScreen(state: MetronomeUiState, actions: MetronomeActions, modifier
             }
 
             // --- Entraînement ---
+
+            // Suivi du tempo au micro.
+            Section(stringResource(R.string.metro_listen_title)) {
+                LabeledRow(stringResource(R.string.metro_enable)) {
+                    Switch(checked = state.listen, onCheckedChange = actions.onListenChange)
+                }
+                SectionDesc(stringResource(R.string.metro_listen_desc))
+                if (state.listen) {
+                    LabeledRow(stringResource(R.string.metro_listen_headphones)) {
+                        Switch(checked = state.listenHeadphones, onCheckedChange = actions.onListenHeadphonesChange)
+                    }
+                    FieldLabel(stringResource(R.string.tempo_visual))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        for (visual in TempoVisual.entries) {
+                            FilterChip(
+                                selected = visual == state.tempoVisual,
+                                onClick = { actions.onTempoVisualChange(visual) },
+                                label = { Text(stringResource(tempoVisualLabel(visual)), maxLines = 1, softWrap = false) },
+                            )
+                        }
+                    }
+                    LabeledRow(stringResource(R.string.metro_listen_latency)) {
+                        Stepper(
+                            value = state.listenLatencyMs,
+                            min = MetronomeRange.MIN_LATENCY_MS,
+                            max = MetronomeRange.MAX_LATENCY_MS,
+                            step = MetronomeRange.LATENCY_STEP_MS,
+                            onChange = actions.onListenLatencyChange,
+                        )
+                    }
+                    SectionDesc(stringResource(R.string.metro_listen_latency_desc))
+                }
+            }
 
             // Décompte.
             Section(stringResource(R.string.metro_count_in)) {
@@ -371,4 +417,10 @@ private fun soundLabel(sound: ClickSound): Int = when (sound) {
     ClickSound.BEEP -> R.string.sound_beep
     ClickSound.CLAVE -> R.string.sound_clave
     ClickSound.COWBELL -> R.string.sound_cowbell
+}
+
+private fun tempoVisualLabel(visual: TempoVisual): Int = when (visual) {
+    TempoVisual.METER -> R.string.tempo_visual_meter
+    TempoVisual.HALO -> R.string.tempo_visual_halo
+    TempoVisual.RING -> R.string.tempo_visual_ring
 }
