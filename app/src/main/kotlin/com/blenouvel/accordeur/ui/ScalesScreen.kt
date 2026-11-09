@@ -76,6 +76,10 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
     val settings = state.settings
     val notation = settings.notation
     val tuning = settings.tuning
+    // Cordes dont l'intervalle avec la suivante n'est pas une quarte juste (5 demi-tons).
+    val fourthBreaks = tuning.strings.zipWithNext()
+        .mapIndexedNotNull { i, (a, b) -> if (b.midi - a.midi != 5) i else null }
+        .toSet()
     val rootName = NoteNames.spelled(state.spelling.first(), notation)
     val noteNames = state.spelling.map { NoteNames.spelled(it, notation) }
     val formulaDescription = stringResource(R.string.formula_description, state.scale.formula)
@@ -163,6 +167,7 @@ fun ScalesScreen(state: ScalesUiState, actions: ScalesActions, modifier: Modifie
                     highlighted = state.highlighted,
                     focusCells = state.focusCells,
                     positionCells = state.positionCells,
+                    fourthBreaks = fourthBreaks,
                     leftHanded = settings.leftHanded,
                     description = stringResource(
                         R.string.fretboard_description,

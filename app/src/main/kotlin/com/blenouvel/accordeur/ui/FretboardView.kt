@@ -23,6 +23,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -64,6 +65,8 @@ private const val DIMMED_ALPHA = 0.16f
  * [degreeLabels] : texte de chaque degré (nom de note ou intervalle). La fondamentale est dessinée
  * dans la couleur d'accent, les degrés de [highlighted] en ambre, les notes à vide cerclées.
  * [positionCells] : si non nul, les notes qui n'appartiennent pas à cet ensemble (box) sont atténuées.
+ * [fourthBreaks] : indices de corde grave s dont l'intervalle avec la corde s+1 n'est pas une quarte
+ * juste (Sol–Si en standard, cordes droppées) ; un liseré pointillé est tracé entre les deux cordes.
  * Toucher une case appelle [onTap] (corde, case), qu'elle appartienne ou non à la gamme.
  */
 @Composable
@@ -75,6 +78,7 @@ fun FretboardView(
     highlighted: Set<Int>,
     focusCells: Set<Int> = emptySet(),
     positionCells: Set<Int>? = null,
+    fourthBreaks: Set<Int> = emptySet(),
     leftHanded: Boolean,
     description: String,
     onTap: (string: Int, fret: Int) -> Unit,
@@ -192,6 +196,22 @@ fun FretboardView(
                     val x = stringX(string)
                     drawLine(scheme.outline, Offset(x, namesH + 4.dp.toPx()), Offset(x, boardBottom), strokeWidth = width)
                 }
+                // Liseré entre deux cordes dont l'intervalle n'est pas une quarte juste.
+                if (fourthBreaks.isNotEmpty()) {
+                    val dash = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 5.dp.toPx()))
+                    for (s in fourthBreaks) {
+                        if (s < 0 || s + 1 >= stringCount) continue
+                        val x = (stringX(s) + stringX(s + 1)) / 2f
+                        drawLine(
+                            color = tunerColors.warning.copy(alpha = 0.6f),
+                            start = Offset(x, nutTop),
+                            end = Offset(x, boardBottom),
+                            strokeWidth = 1.5.dp.toPx(),
+                            pathEffect = dash,
+                        )
+                    }
+                }
+
                 // Numéros de cases (repères mis en valeur) et noms des cordes à vide.
                 for (fret in 1..frets) {
                     val layout = fretNumbers[fret - 1]
